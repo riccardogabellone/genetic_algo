@@ -74,6 +74,12 @@ cargo run --release -- --help                          # all options
 ```
 Every run prints its seed. The same seed and build replay the same run.
 
+Graphical UI, with live rule sliders and charts:
+```sh
+sudo apt install libegl1 libegl-mesa0                  # once, on WSL/Linux
+cargo run --release -p genetic_algo_ui
+```
+
 The optional rules can slow evolution past the default tick limit, so raise it:
 ```sh
 cargo run --release -- --smartness-cost 2 --vision 5 --ticks 20000
@@ -94,7 +100,9 @@ Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a 
 | `sampling` | Triangular distribution |
 | `render` | Terminal, chart and GIF front ends, sharing one `palette` |
 
-The core does not depend on `render`, so a graphical front end only needs `Simulation::step()`, `world()` and `history()`.
+The core does not depend on `render`, so a front end only needs `Simulation::step()`, `world()` and `history()`.
+
+The `ui` crate is the egui front end, kept in its own crate so the core and terminal builds do not pull in egui. `controller` holds all its run logic and draws nothing; `app`, `map_view` and `charts` only draw and report input.
 
 # Rule experiments
 Means over 8 runs of 60,000 ticks on 32x32, started from low smartness (1-5) and from high smartness (85-95).
@@ -114,7 +122,7 @@ Extinct runs within 20,000 ticks, out of 60: the all-rules sets lose 0 to 1 on 3
 
 # Testing
 ```sh
-cargo test
+cargo test --workspace
 cargo run --release --example selection_vs_control     # evolution vs a control run
 ```
 Smartness rising is not enough to prove evolution: it starts near 0 and is clamped there, so mutation alone pushes it up. Only the gap against the control, where smartness has no effect on behaviour, is evidence of natural selection.

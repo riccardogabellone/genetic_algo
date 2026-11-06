@@ -1,0 +1,244 @@
+//! Draws the world. Colors come from the shared palette; shapes distinguish each kind of
+//! cell, so identity never relies on color alone.
+
+use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Shape, Stroke, Vec2};
+use genetic_algo::{
+    individual::{Gender, Individual},
+    render::palette::{self, Rgb, appearance},
+    world::{Cell, Position, World},
+};
+
+fn color((red, green, blue): Rgb) -> Color32 {
+    Color32::from_rgb(red, green, blue)
+}
+
+/// Where a map sits inside the space available to it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MapLayout {
+    origin: Pos2,
+    cell_size: f32,
+}
+
+impl MapLayout {
+    /// The largest whole-cell fit, centered. Cells are always square.
+    fn fit(area: Rect, width: usize, height: usize) -> Self {
+        let cell_size = (area.width() / width as f32)
+            .min(area.height() / height as f32)
+            .max(1.0);
+        let map_size = Vec2::new(width as f32, height as f32) * cell_size;
+        Self {
+            origin: area.center() - map_size / 2.0,
+            cell_size,
+        }
+    }
+
+    fn cell_rect(&self, position: Position) -> Rect {
+        let corner = self.origin + Vec2::new(position.x as f32, position.y as f32) * self.cell_size;
+        Rect::from_min_size(corner, Vec2::splat(self.cell_size))
+    }
+
+    /// The cell under `pointer`, if it is on the map.
+    fn cell_at(&self, pointer: Pos2, width: usize, height: usize) -> Option<Position> {
+        let offset = (pointer - self.origin) / self.cell_size;
+        if offset.x < 0.0 || offset.y < 0.0 {
+            return None;
+        }
+        let position = Position {
+            x: offset.x as usize,
+            y: offset.y as usize,
+        };
+        (position.x < width && position.y < height).then_some(position)
+    }
+}
+
+pub fn show(ui: &mut egui::Ui, world: &World) {
+    let (area, response) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+    let layout = MapLayout::fit(area, world.width(), world.height());
+    let painter = ui.painter_at(area);
+
+    let map_rect = Rect::from_min_size(
+        layout.origin,
+        Vec2::new(world.width() as f32, world.height() as f32) * layout.cell_size,
+    );
+    painter.rect_filled(map_rect, 0.0, color(palette::BACKGROUND));
+    for (position, cell) in world.iter() {
+        draw_cell(&painter, layout.cell_rect(position), cell);
+    }
+
+    if let Some(pointer) = response.hover_pos()
+        && let Some(position) = layout.cell_at(pointer, world.width(), world.height())
+    {
+        let cell = world.get(position);
+        if *cell != Cell::Empty {
+            response.on_hover_ui_at_pointer(|ui| describe_cell(ui, position, cell));
+        }
+    }
+}
+
+fn draw_cell(painter: &Painter, rect: Rect, cell: &Cell) {
+    let tint = color(appearance(cell).color);
+    let radius = rect.width() * 0.45;
+    let center = rect.center();
+    match cell {
+        Cell::Empty => {}
+        Cell::Food => {
+            painter.circle_filled(center, rect.width() * 0.2, tint);
+        }
+        Cell::Wall => {
+            painter.rect_filled(rect.shrink(rect.width() * 0.05), 0.0, tint);
+        }
+        Cell::Hazard => {
+            let inner = rect.shrink(rect.width() * 0.2);
+            let stroke = Stroke::new((rect.width() * 0.16).max(1.0), tint);
+            painter.line_segment([inner.left_top(), inner.right_bottom()], stroke);
+            painter.line_segment([inner.right_top(), inner.left_bottom()], stroke);
+        }
+        Cell::Individual(individual) => match individual.gender {
+            Gender::Male => {
+                painter.circle_filled(center, radius, tint);
+            }
+            Gender::Female => {
+                let diamond = vec![
+                    center + Vec2::new(0.0, -radius),
+                    center + Vec2::new(radius, 0.0),
+                    center + Vec2::new(0.0, radius),
+                    center + Vec2::new(-radius, 0.0),
+                ];
+                painter.add(Shape::convex_polygon(diamond, tint, Stroke::NONE));
+            }
+        },
+    }
+}
+
+fn describe_cell(ui: &mut egui::Ui, position: Position, cell: &Cell) {
+    let place = format!("({}, {})", position.x, position.y);
+    match cell {
+        Cell::Empty => {}
+        Cell::Food => {
+            ui.label(format!("Food at {place}"));
+        }
+        Cell::Wall => {
+            ui.label(format!("Wall at {place}"));
+        }
+        Cell::Hazard => {
+            ui.label(format!("Hazard at {place}"));
+        }
+        Cell::Individual(individual) => describe_individual(ui, &place, individual),
+    }
+}
+
+fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) {
+    let gender = match individual.gender {
+        Gender::Male => "Male",
+        Gender::Female => "Female",
+    };
+    ui.strong(format!("{gender} #{} at {place}", individual.id));
+    egui::Grid::new("individual_details").show(ui, |ui| {
+        let mut row = |name: &str, value: String| {
+            ui.label(name);
+            ui.label(value);
+            ui.end_row();
+        };
+        row("Generation", individual.generation.to_string());
+        row("Smartness", format!("{:.1}", individual.smartness));
+        row("Fertility", format!("{:.2}", individual.reproduction));
+        row("Speed", individual.speed.to_string());
+        row("Health", individual.health.to_string());
+        row(
+            "Age",
+            format!("{} / {}", individual.age, individual.lifespan),
+        );
+    });
+}
+
+/// One row explaining the symbols, drawn with the same shapes as the map.
+pub fn legend(ui: &mut egui::Ui) {
+    let sample = |ui: &mut egui::Ui, cell: &Cell, label: &str| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
+        ui.painter()
+            .rect_filled(rect, 2.0, color(palette::BACKGROUND));
+        draw_cell(ui.painter(), rect, cell);
+        ui.label(label);
+        ui.add_space(8.0);
+    };
+    let sample_individual = |gender| {
+        Cell::Individual(Box::new(Individual {
+            id: 0,
+            generation: 0,
+            gender,
+            smartness: 100.0,
+            reproduction: 0.0,
+            health: 1,
+            age: 0,
+            lifespan: 1,
+            speed: 1,
+            mating_cooldown: 0,
+        }))
+    };
+    ui.horizontal_wrapped(|ui| {
+        sample(ui, &sample_individual(Gender::Male), "Male");
+        sample(ui, &sample_individual(Gender::Female), "Female");
+        ui.label("(brighter = smarter)");
+        ui.add_space(8.0);
+        sample(ui, &Cell::Food, "Food");
+        sample(ui, &Cell::Wall, "Wall");
+        sample(ui, &Cell::Hazard, "Hazard");
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::pos2;
+
+    fn area(width: f32, height: f32) -> Rect {
+        Rect::from_min_size(pos2(10.0, 20.0), Vec2::new(width, height))
+    }
+
+    #[test]
+    fn cells_are_square_and_the_map_fits_and_is_centered() {
+        let layout = MapLayout::fit(area(400.0, 200.0), 10, 10);
+        assert_eq!(layout.cell_size, 20.0);
+        assert_eq!(layout.origin, pos2(110.0, 20.0));
+    }
+
+    #[test]
+    fn non_square_maps_fit_their_long_side() {
+        let layout = MapLayout::fit(area(400.0, 400.0), 40, 10);
+        assert_eq!(layout.cell_size, 10.0);
+    }
+
+    #[test]
+    fn a_tiny_area_never_produces_a_zero_sized_cell() {
+        assert_eq!(MapLayout::fit(area(0.0, 0.0), 128, 128).cell_size, 1.0);
+    }
+
+    #[test]
+    fn pointer_lookup_finds_the_right_cell() {
+        let layout = MapLayout::fit(area(100.0, 100.0), 10, 10);
+        let inside = |x, y| layout.cell_at(pos2(x, y), 10, 10);
+        assert_eq!(inside(10.0, 20.0), Some(Position { x: 0, y: 0 }));
+        assert_eq!(inside(25.0, 39.0), Some(Position { x: 1, y: 1 }));
+        assert_eq!(inside(109.9, 119.9), Some(Position { x: 9, y: 9 }));
+    }
+
+    #[test]
+    fn pointer_lookup_rejects_everything_off_the_map() {
+        let layout = MapLayout::fit(area(100.0, 100.0), 10, 10);
+        for (x, y) in [(9.0, 50.0), (50.0, 19.0), (110.0, 50.0), (50.0, 120.0)] {
+            assert_eq!(layout.cell_at(pos2(x, y), 10, 10), None, "{x}, {y}");
+        }
+    }
+
+    #[test]
+    fn lookup_and_drawing_agree() {
+        let layout = MapLayout::fit(area(333.0, 217.0), 13, 7);
+        for y in 0..7 {
+            for x in 0..13 {
+                let position = Position { x, y };
+                let center = layout.cell_rect(position).center();
+                assert_eq!(layout.cell_at(center, 13, 7), Some(position));
+            }
+        }
+    }
+}

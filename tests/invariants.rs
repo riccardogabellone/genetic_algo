@@ -404,3 +404,48 @@ fn food_regrows_on_schedule_and_up_to_its_cap() {
     }
     assert_eq!(food, [0, 0, 2, 2, 2, 4, 4, 4, 5, 5, 5, 5]);
 }
+
+// ---------- Changing rules mid-run ----------
+
+#[test]
+fn rules_can_change_during_a_run() {
+    let rules = Config {
+        max_speed: 4,
+        speed_upkeep: 0.5,
+        max_vision: 5,
+        ..Config::for_size(16, 16)
+    };
+    let mut simulation = Simulation::new(rules.clone(), 1).unwrap();
+    for _ in 0..300 {
+        simulation.step();
+    }
+    // Lowering the maximum must not break individuals that are already faster.
+    let stricter = Config {
+        max_speed: 1,
+        speed_upkeep: 0.0,
+        max_vision: 0,
+        smartness_upkeep: 1.0,
+        ..rules
+    };
+    simulation.set_config(stricter).unwrap();
+    for _ in 0..300 {
+        simulation.step();
+    }
+    assert_eq!(simulation.config().max_speed, 1);
+    assert_eq!(simulation.latest().tick, 600);
+}
+
+#[test]
+fn invalid_or_resized_rules_are_rejected_and_the_old_ones_kept() {
+    let original = Config::for_size(16, 16);
+    let mut simulation = Simulation::new(original.clone(), 1).unwrap();
+
+    let invalid = Config {
+        smartness_upkeep: f32::NAN,
+        ..original.clone()
+    };
+    assert!(simulation.set_config(invalid).is_err());
+
+    assert!(simulation.set_config(Config::for_size(32, 32)).is_err());
+    assert_eq!(*simulation.config(), original);
+}

@@ -1,0 +1,7 @@
+//! Graphical front end. `controller` holds all run logic and has no drawing code, so it
+//! can be tested without a window; `app` and its view modules only draw and report input.
+
+pub mod app;
+pub mod charts;
+pub mod controller;
+pub mod map_view;

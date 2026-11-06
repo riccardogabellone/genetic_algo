@@ -72,6 +72,17 @@ impl Simulation {
         &self.config
     }
 
+    /// Changes the rules mid-run. Living individuals keep the traits they already have.
+    /// The map size is fixed for the life of a simulation.
+    pub fn set_config(&mut self, config: Config) -> Result<(), ConfigError> {
+        config.validate()?;
+        if (config.width, config.height) != (self.config.width, self.config.height) {
+            return Err(ConfigError("the map size cannot change mid-run".to_owned()));
+        }
+        self.config = config;
+        Ok(())
+    }
+
     pub fn world(&self) -> &World {
         &self.world
     }
