@@ -4,8 +4,9 @@ use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
 use crate::{
     behavior::{Action, decide},
-    config::{Config, ConfigError},
+    config::{Config, ConfigError, MAX_SMARTNESS},
     individual::{DeathCause, Gender, Individual},
+    sampling::stochastic_round,
     stats::{TickEvents, TickStats},
     world::{Cell, Position, World},
 };
@@ -23,6 +24,17 @@ pub struct Simulation {
     rng: StdRng,
     next_id: u64,
     history: Vec<TickStats>,
+}
+
+/// The running costs of a big brain and of fast legs.
+fn upkeep_due(individual: &Individual, moved: bool, config: &Config, rng: &mut StdRng) -> u32 {
+    let brain = individual.smartness / MAX_SMARTNESS * config.smartness_upkeep;
+    let legs = if moved {
+        (individual.speed - 1) as f32 * config.speed_upkeep
+    } else {
+        0.0
+    };
+    stochastic_round(rng, brain + legs)
 }
 
 impl Simulation {
@@ -163,6 +175,8 @@ impl Simulation {
         } else {
             individual.health = individual.health.saturating_sub(config.turn_cost);
         }
+        let upkeep = upkeep_due(&individual, destination != position, config, &mut self.rng);
+        individual.health = individual.health.saturating_sub(upkeep);
         individual.age += 1;
 
         let cause = individual.death_cause(config).map(|cause| match cause {

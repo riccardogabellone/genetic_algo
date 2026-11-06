@@ -12,6 +12,8 @@ pub const MAX_CELLS: usize = 1 << 24;
 pub const MAX_TICKS: u32 = 10_000_000;
 /// Upper bound on the health scale; every value up to here is exact in an `f32`.
 pub const MAX_HEALTH_SCALE: u32 = 1_000_000;
+/// Upper bound on vision and speed, which set how many cells a turn may scan.
+pub const MAX_RADIUS: usize = 64;
 
 pub const DEFAULT_WIDTH: usize = 32;
 pub const DEFAULT_HEIGHT: usize = 32;
@@ -36,6 +38,10 @@ pub struct Config {
     pub min_smartness_for_decisions: f32,
     /// Experimental control: `false` makes smartness have no effect on behaviour.
     pub smartness_affects_behavior: bool,
+    /// Extra health per turn at maximum smartness, proportional below it. 0 disables it.
+    pub smartness_upkeep: f32,
+    /// How far maximum smartness can see food, proportional below it. 0 disables it.
+    pub max_vision: usize,
 
     // Founders
     pub founder_smartness: Spread,
@@ -63,6 +69,10 @@ pub struct Config {
     pub mating_cooldown: u32,
     /// Cells moved per turn: destinations form a square ring of `8 * speed` cells.
     pub initial_speed: usize,
+    /// Speed mutates by one step within `1..=max_speed`. Equal to `initial_speed`, it is fixed.
+    pub max_speed: usize,
+    /// Extra health per point of speed above 1, charged on turns that change cell.
+    pub speed_upkeep: f32,
 }
 
 impl Default for Config {
@@ -90,6 +100,8 @@ impl Config {
             target_smartness: 80.0,
             min_smartness_for_decisions: 1.0,
             smartness_affects_behavior: true,
+            smartness_upkeep: 0.0,
+            max_vision: 0,
 
             founder_smartness: Spread {
                 min: 1.0,
@@ -123,6 +135,8 @@ impl Config {
             mating_cost: 10,
             mating_cooldown: 3,
             initial_speed: 1,
+            max_speed: 1,
+            speed_upkeep: 0.0,
         }
     }
 
@@ -219,7 +233,20 @@ impl Config {
                 .is_some_and(|share| share < self.max_health),
             "a newborn's health (2 * mating_cost) must be below max_health",
         )?;
-        require(self.initial_speed > 0, "initial_speed must be positive")
+        require(
+            self.initial_speed > 0 && self.initial_speed <= self.max_speed,
+            "speed must satisfy 0 < initial_speed <= max_speed",
+        )?;
+        require(
+            self.max_speed <= MAX_RADIUS && self.max_vision <= MAX_RADIUS,
+            "max_speed and max_vision are too large",
+        )?;
+        let upkeep_limit = self.max_health as f32;
+        require(
+            (0.0..=upkeep_limit).contains(&self.smartness_upkeep)
+                && (0.0..=upkeep_limit).contains(&self.speed_upkeep),
+            "upkeep values must be between 0 and max_health",
+        )
     }
 
     /// A lone survivor hitting the target is luck, not an evolved population.
@@ -310,5 +337,14 @@ mod tests {
         assert!(rejects(|c| c.mating_cost = c.max_health));
         assert!(rejects(|c| c.mating_cost = u32::MAX));
         assert!(rejects(|c| c.initial_speed = 0));
+        assert!(rejects(|c| c.initial_speed = c.max_speed + 1));
+        assert!(rejects(|c| {
+            c.initial_speed = MAX_RADIUS + 1;
+            c.max_speed = MAX_RADIUS + 1;
+        }));
+        assert!(rejects(|c| c.max_vision = MAX_RADIUS + 1));
+        assert!(rejects(|c| c.smartness_upkeep = f32::NAN));
+        assert!(rejects(|c| c.smartness_upkeep = -1.0));
+        assert!(rejects(|c| c.speed_upkeep = f32::INFINITY));
     }
 }

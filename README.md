@@ -46,6 +46,12 @@ Tutti i valori numerici sono in `src/config.rs`. Tra parentesi i default.
 - con probabilità 0.5 ogni tratto muta di un passo simmetrico (smartness: fino a ±8), limitato alla sua scala
 - "generation" = generazione più alta dei genitori + 1
 
+### Regole opzionali (spente di default)
+- **Costo della smartness** (`--smartness-cost`): "health" extra persa a ogni turno, proporzionale alla smartness; la paga anche chi mangia
+- **Visione** (`--vision`): chi decide e ha fame cammina verso il FOOD visibile più vicino; il raggio è proporzionale alla smartness
+- **Velocità ereditabile** (`--max-speed`): il figlio eredita la velocità da un genitore, e può mutare di ±1
+- **Costo della velocità** (`--speed-cost`): "health" extra per ogni punto di velocità sopra 1, nei turni in cui cambia casella
+
 ### Fine della simulazione
 La simulazione termina alla prima di queste condizioni:
 - estinzione
@@ -68,6 +74,12 @@ cargo run --release -- --help                          # all options
 ```
 Every run prints its seed. The same seed and build replay the same run.
 
+The optional rules can slow evolution past the default tick limit, so raise it:
+```sh
+cargo run --release -- --smartness-cost 2 --vision 5 --ticks 20000
+cargo run --release -- --smartness-cost 2 --vision 5 --max-speed 4 --speed-cost 1
+```
+
 Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a population reliably: 12x12 goes extinct in about 1 run in 6, and 8x8 almost always does.
 
 # Architecture
@@ -83,6 +95,22 @@ Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a 
 | `render` | Terminal, chart and GIF front ends, sharing one `palette` |
 
 The core does not depend on `render`, so a graphical front end only needs `Simulation::step()`, `world()` and `history()`.
+
+# Rule experiments
+Means over 8 runs of 60,000 ticks on 32x32, started from low smartness (1-5) and from high smartness (85-95).
+
+| Rules | From low | From high | Mean speed | Population |
+|---|---|---|---|---|
+| Cost 2 | 91.5 | 92.2 | 1 | 229 |
+| Cost 4 | 57.5 | 69.6 (not yet converged) | 1 | 170-191 |
+| Cost 8 | 4.2 | all extinct | 1 | 418 |
+| Vision 5, cost 2 | 91.9 | 92.3 | 1 | 229 |
+| Vision 5, cost 4 | 90.7 | 91.5 | 1 | 141 |
+| Vision 5, cost 8 | 4.2 | 91.2 | 1 | 418 / 79 |
+| All: cost 2, vision 5, speed cost 1 | 95.3 | 95.5 | 3.1 | 139 |
+| All: cost 4, vision 5, speed cost 2 | 95.8 | 95.8 | 2.7 | 85 |
+
+Extinct runs within 20,000 ticks, out of 60: the all-rules sets lose 0 to 1 on 32x32 but 18 to 45 on 16x16. `cargo run --release --example rule_experiments -- 8 60000` reruns the from-low rule sets it includes, each with a control; the high starts and the extinction counts were one-off experiments.
 
 # Testing
 ```sh

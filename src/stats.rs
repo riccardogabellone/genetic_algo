@@ -55,19 +55,22 @@ pub struct TickStats {
     pub females: usize,
     /// `None` once the population is extinct: there is nothing to measure.
     pub smartness: Option<SmartnessSummary>,
+    /// `None` once the population is extinct.
+    pub mean_speed: Option<f32>,
     pub max_generation: u32,
     pub events: TickEvents,
 }
 
 impl TickStats {
     pub fn measure(tick: u32, world: &World, events: TickEvents) -> Self {
-        let (mut males, mut females, mut max_generation) = (0, 0, 0);
+        let (mut males, mut females, mut max_generation, mut total_speed) = (0, 0, 0, 0);
         let (mut sum, mut min, mut max) = (0.0_f64, f32::INFINITY, f32::NEG_INFINITY);
         for (_, individual) in world.individuals() {
             match individual.gender {
                 Gender::Male => males += 1,
                 Gender::Female => females += 1,
             }
+            total_speed += individual.speed;
             sum += f64::from(individual.smartness);
             min = min.min(individual.smartness);
             max = max.max(individual.smartness);
@@ -84,6 +87,7 @@ impl TickStats {
                 min,
                 max,
             }),
+            mean_speed: (population > 0).then(|| total_speed as f32 / population as f32),
             max_generation,
             events,
         }

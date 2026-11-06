@@ -97,14 +97,14 @@ impl Individual {
             health: config.mating_cost * 2,
             age: 0,
             lifespan: rng.random_range(config.min_lifespan..=config.max_lifespan),
-            speed: parent_a.speed.max(parent_b.speed),
+            speed: inherit_speed(parent_a.speed, parent_b.speed, config, rng),
             mating_cooldown: 0,
         }
     }
 
     pub fn can_mate(&self, config: &Config) -> bool {
         // Paying for the birth must leave health above zero: nobody may die outside
-        // their own turn. Covering the upkeep too avoids breeding straight into starvation.
+        // their own turn. Covering the basic turn cost too avoids most starvation at birth.
         let reserve = config.mating_cost.saturating_add(config.turn_cost);
         self.age >= config.maturity_age && self.mating_cooldown == 0 && self.health > reserve
     }
@@ -121,6 +121,19 @@ impl Individual {
             None
         }
     }
+}
+
+/// Speed is a whole number, so it comes from one parent and mutates by a single step.
+fn inherit_speed(speed_a: usize, speed_b: usize, config: &Config, rng: &mut impl RngExt) -> usize {
+    let inherited = if rng.random() { speed_a } else { speed_b };
+    let mutated = if rng.random::<f32>() >= config.mutation_rate {
+        inherited
+    } else if rng.random() {
+        inherited + 1
+    } else {
+        inherited.saturating_sub(1)
+    };
+    mutated.clamp(1, config.max_speed)
 }
 
 fn inherit(value_a: f32, value_b: f32, rng: &mut impl RngExt) -> f32 {
@@ -240,6 +253,47 @@ mod tests {
             Individual::offspring(1, &a, &b, &config, &mut rng).generation,
             8
         );
+    }
+
+    #[test]
+    fn speed_comes_from_a_parent_and_mutates_one_step_within_bounds() {
+        let config = Config {
+            mutation_rate: 1.0,
+            max_speed: 4,
+            ..Config::default()
+        };
+        let mut rng = StdRng::seed_from_u64(7);
+        let slow = Individual {
+            speed: 1,
+            ..parent(&config, 1.0)
+        };
+        let fast = Individual {
+            speed: 4,
+            ..parent(&config, 1.0)
+        };
+        let mut seen = [false; 5];
+        for id in 0..1_000 {
+            let child = Individual::offspring(id, &slow, &fast, &config, &mut rng);
+            assert!((1..=4).contains(&child.speed));
+            seen[child.speed] = true;
+        }
+        assert_eq!(seen, [false, true, true, true, true]);
+    }
+
+    #[test]
+    fn speed_is_fixed_when_max_speed_equals_it() {
+        let config = Config {
+            mutation_rate: 1.0,
+            ..Config::default()
+        };
+        let mut rng = StdRng::seed_from_u64(8);
+        let a = parent(&config, 1.0);
+        for id in 0..200 {
+            assert_eq!(
+                Individual::offspring(id, &a, &a, &config, &mut rng).speed,
+                1
+            );
+        }
     }
 
     #[test]

@@ -31,6 +31,18 @@ struct Args {
     /// Maximum ticks before the run stops [default: from the rules].
     #[arg(long)]
     ticks: Option<u32>,
+    /// Extra health per turn at maximum smartness, proportional below it.
+    #[arg(long, default_value_t = 0.0)]
+    smartness_cost: f32,
+    /// How far maximum smartness can see food, proportional below it. 0 disables it.
+    #[arg(long, default_value_t = 0)]
+    vision: usize,
+    /// Lets speed evolve up to this value. 1 keeps it fixed.
+    #[arg(long, default_value_t = 1)]
+    max_speed: usize,
+    /// Extra health per point of speed above 1, on turns that change cell.
+    #[arg(long, default_value_t = 0.0)]
+    speed_cost: f32,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -67,7 +79,13 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
     // Fail before a long run, not after it.
     check_chart_path(&args.chart)?;
 
-    let mut config = Config::for_size(args.width, args.height);
+    let mut config = Config {
+        smartness_upkeep: args.smartness_cost,
+        max_vision: args.vision,
+        max_speed: args.max_speed,
+        speed_upkeep: args.speed_cost,
+        ..Config::for_size(args.width, args.height)
+    };
     if let Some(ticks) = args.ticks {
         config.max_ticks = ticks;
     }

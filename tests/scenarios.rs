@@ -4,7 +4,12 @@ mod common;
 
 use common::{CENTER, adult, only_individual, scenario_config, simulation_with};
 use genetic_algo::{
-    individual::Gender::{Female, Male},
+    behavior::vision_radius,
+    config::Config,
+    individual::{
+        Gender::{Female, Male},
+        Individual,
+    },
     world::{Cell, Position, World},
 };
 
@@ -16,7 +21,7 @@ fn fill_ring(world: &mut World, center: Position, cell: &Cell) {
     }
 }
 
-fn world_with_center(individual: genetic_algo::individual::Individual) -> World {
+fn world_with_center(individual: Individual) -> World {
     let mut world = World::new(5, 5);
     world.place_individual(CENTER, individual);
     world
@@ -229,6 +234,189 @@ fn speed_sets_the_ring_of_destinations() {
     }
 }
 
+// ---------- Vision ----------
+
+#[test]
+fn a_hungry_thinker_walks_toward_food_it_can_see() {
+    let config = Config {
+        max_vision: 5,
+        ..scenario_config()
+    };
+    for seed in 0..SEEDS {
+        let mut world = world_with_center(adult(1, Male, 100.0));
+        world.set(Position { x: 4, y: 2 }, Cell::Food);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        assert_eq!(only_individual(&simulation).0, Position { x: 3, y: 2 });
+    }
+}
+
+#[test]
+fn food_beyond_vision_is_not_noticed() {
+    let config = Config {
+        max_vision: 1,
+        ..scenario_config()
+    };
+    let mut moved_elsewhere = false;
+    for seed in 0..SEEDS {
+        let mut world = world_with_center(adult(1, Male, 100.0));
+        world.set(Position { x: 4, y: 2 }, Cell::Food);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        moved_elsewhere |= only_individual(&simulation).0.x != 3;
+    }
+    assert!(moved_elsewhere);
+}
+
+#[test]
+fn a_sated_thinker_ignores_distant_food() {
+    let config = Config {
+        max_vision: 5,
+        ..scenario_config()
+    };
+    let mut moved_elsewhere = false;
+    for seed in 0..SEEDS {
+        let mut sated = adult(1, Male, 100.0);
+        sated.health = config.hungry_below_health;
+        let mut world = world_with_center(sated);
+        world.set(Position { x: 4, y: 2 }, Cell::Food);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        moved_elsewhere |= only_individual(&simulation).0.x != 3;
+    }
+    assert!(moved_elsewhere);
+}
+
+#[test]
+fn a_blocked_path_falls_back_to_any_free_cell() {
+    let config = Config {
+        max_vision: 5,
+        ..scenario_config()
+    };
+    let mut world = world_with_center(adult(1, Male, 100.0));
+    world.set(Position { x: 4, y: 2 }, Cell::Food);
+    for y in 1..=3 {
+        world.set(Position { x: 3, y }, Cell::Wall);
+    }
+    let mut simulation = simulation_with(config, world, 1);
+    simulation.step();
+    let (position, _) = only_individual(&simulation);
+    assert_ne!(position, CENTER);
+    assert!(position.x <= 2);
+}
+
+#[test]
+fn vision_scales_with_smartness() {
+    let config = Config {
+        max_vision: 6,
+        ..scenario_config()
+    };
+    assert_eq!(vision_radius(0.0, &config), 0);
+    assert_eq!(vision_radius(50.0, &config), 3);
+    assert_eq!(vision_radius(100.0, &config), 6);
+}
+
+// ---------- Upkeep ----------
+
+fn health_after_one_turn(config: &Config, individual: Individual, seed: u64) -> u32 {
+    let mut world = world_with_center(individual);
+    fill_ring(&mut world, CENTER, &Cell::Wall);
+    let mut simulation = simulation_with(config.clone(), world, seed);
+    simulation.step();
+    only_individual(&simulation).1.health
+}
+
+#[test]
+fn smartness_upkeep_is_proportional_to_smartness() {
+    let config = Config {
+        smartness_upkeep: 4.0,
+        ..scenario_config()
+    };
+    let base = 50 - config.turn_cost;
+    assert_eq!(health_after_one_turn(&config, adult(1, Male, 0.0), 1), base);
+    assert_eq!(
+        health_after_one_turn(&config, adult(1, Male, 50.0), 1),
+        base - 2
+    );
+    assert_eq!(
+        health_after_one_turn(&config, adult(1, Male, 100.0), 1),
+        base - 4
+    );
+}
+
+#[test]
+fn fractional_upkeep_is_right_on_average() {
+    let config = Config {
+        smartness_upkeep: 1.0,
+        ..scenario_config()
+    };
+    let base = 50 - config.turn_cost;
+    let runs = 2_000;
+    let lost: u32 = (0..runs)
+        .map(|seed| base - health_after_one_turn(&config, adult(1, Male, 25.0), seed))
+        .sum();
+    assert!((f64::from(lost) / runs as f64 - 0.25).abs() < 0.04);
+}
+
+/// Otherwise the control arm would not pay for a brain it cannot use.
+#[test]
+fn smartness_upkeep_applies_even_when_smartness_does_nothing() {
+    let config = Config {
+        smartness_upkeep: 4.0,
+        smartness_affects_behavior: false,
+        ..scenario_config()
+    };
+    let health = health_after_one_turn(&config, adult(1, Male, 100.0), 1);
+    assert_eq!(health, 50 - config.turn_cost - 4);
+}
+
+#[test]
+fn upkeep_is_also_paid_on_a_turn_spent_eating() {
+    let config = Config {
+        smartness_upkeep: 4.0,
+        ..scenario_config()
+    };
+    let mut world = world_with_center(adult(1, Male, 100.0));
+    world.set(Position { x: 3, y: 2 }, Cell::Food);
+    let mut simulation = simulation_with(config.clone(), world, 1);
+    simulation.step();
+    assert_eq!(
+        only_individual(&simulation).1.health,
+        50 + config.food_gain - 4
+    );
+}
+
+#[test]
+fn speed_upkeep_is_charged_only_on_turns_that_change_cell() {
+    let config = Config {
+        speed_upkeep: 3.0,
+        ..scenario_config()
+    };
+    let mut fast = adult(1, Male, 100.0);
+    fast.speed = 2;
+
+    // Boxed in at speed 2: every cell of the outer ring is a wall.
+    let mut world = world_with_center(fast.clone());
+    for position in world.ring(CENTER, 2) {
+        world.set(position, Cell::Wall);
+    }
+    let mut simulation = simulation_with(config.clone(), world, 1);
+    simulation.step();
+    assert_eq!(only_individual(&simulation).1.health, 50 - config.turn_cost);
+
+    let mut simulation = simulation_with(config.clone(), world_with_center(fast), 1);
+    simulation.step();
+    assert_eq!(
+        only_individual(&simulation).1.health,
+        50 - config.turn_cost - 3
+    );
+
+    let mut simulation =
+        simulation_with(config.clone(), world_with_center(adult(1, Male, 100.0)), 1);
+    simulation.step();
+    assert_eq!(only_individual(&simulation).1.health, 50 - config.turn_cost);
+}
+
 // ---------- Reproduction ----------
 
 fn couple() -> World {
@@ -365,7 +553,7 @@ fn no_room_means_no_birth() {
     let mut world = World::new(2, 1);
     world.place_individual(Position { x: 0, y: 0 }, adult(1, Male, 100.0));
     world.place_individual(Position { x: 1, y: 0 }, adult(2, Female, 100.0));
-    let config = genetic_algo::config::Config {
+    let config = Config {
         width: 2,
         height: 1,
         ..scenario_config()

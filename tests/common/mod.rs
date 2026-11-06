@@ -17,6 +17,11 @@ pub fn scenario_config() -> Config {
         wall_count: 0,
         hazard_count: 0,
         food_regrowth_amount: 0,
+        // Each scenario isolates one rule; the optional costs and senses opt in.
+        smartness_upkeep: 0.0,
+        max_vision: 0,
+        max_speed: 8,
+        speed_upkeep: 0.0,
         ..Config::for_size(5, 5)
     }
 }

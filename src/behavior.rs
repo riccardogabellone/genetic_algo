@@ -33,7 +33,7 @@ pub fn decide(
         return action;
     }
     if thinks_this_turn(individual, config, rng) {
-        deliberate(individual, &reachable, world, config, rng)
+        deliberate(individual, position, &reachable, world, config, rng)
     } else {
         act_at_random(&reachable, world, rng)
     }
@@ -80,21 +80,62 @@ fn thinks_this_turn(individual: &Individual, config: &Config, rng: &mut impl Rng
         && rng.random_bool(f64::from(individual.smartness / MAX_SMARTNESS).clamp(0.0, 1.0))
 }
 
-/// Eats when hungry, otherwise moves to a free cell. Never touches a hazard.
+/// Eats when hungry, or walks toward food it can see. Otherwise moves to a free cell.
+/// Never touches a hazard.
 fn deliberate(
     individual: &Individual,
+    position: Position,
     reachable: &[Position],
     world: &World,
     config: &Config,
     rng: &mut impl RngExt,
 ) -> Action {
-    if individual.health < config.hungry_below_health
-        && let Some(food) = choose_cell(reachable, world, rng, |cell| *cell == Cell::Food)
-    {
-        return Action::Eat(food);
+    if individual.health < config.hungry_below_health {
+        if let Some(food) = choose_cell(reachable, world, rng, |cell| *cell == Cell::Food) {
+            return Action::Eat(food);
+        }
+        let vision = vision_radius(individual.smartness, config);
+        if let Some(step) = step_toward_food(position, vision, reachable, world, rng) {
+            return Action::Move(step);
+        }
     }
     choose_cell(reachable, world, rng, |cell| *cell == Cell::Empty)
         .map_or(Action::Stay, Action::Move)
+}
+
+/// Smarter individuals see farther.
+pub fn vision_radius(smartness: f32, config: &Config) -> usize {
+    (smartness / MAX_SMARTNESS * config.max_vision as f32).round() as usize
+}
+
+/// A free reachable cell strictly closer to the nearest visible food, if there is one.
+fn step_toward_food(
+    position: Position,
+    vision: usize,
+    reachable: &[Position],
+    world: &World,
+    rng: &mut impl RngExt,
+) -> Option<Position> {
+    let food = (1..=vision).find_map(|radius| {
+        choose_cell(&world.ring(position, radius), world, rng, |cell| {
+            *cell == Cell::Food
+        })
+    })?;
+    let distance = |from: Position| {
+        let (dx, dy) = (from.x.abs_diff(food.x), from.y.abs_diff(food.y));
+        dx * dx + dy * dy
+    };
+    let closer: Vec<Position> = reachable
+        .iter()
+        .copied()
+        .filter(|cell| *world.get(*cell) == Cell::Empty && distance(*cell) < distance(position))
+        .collect();
+    let best = closer.iter().map(|cell| distance(*cell)).min()?;
+    let nearest: Vec<Position> = closer
+        .into_iter()
+        .filter(|cell| distance(*cell) == best)
+        .collect();
+    nearest.choose(rng).copied()
 }
 
 /// Picks any reachable cell and suffers the consequences.

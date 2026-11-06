@@ -12,7 +12,7 @@ use genetic_algo::{
 };
 
 struct Snapshot {
-    individuals: HashMap<u64, (Position, u32)>,
+    individuals: HashMap<u64, (Position, u32, usize)>,
     walls: usize,
     hazards: usize,
 }
@@ -22,7 +22,9 @@ fn snapshot(simulation: &Simulation) -> Snapshot {
     Snapshot {
         individuals: world
             .individuals()
-            .map(|(position, individual)| (individual.id, (position, individual.age)))
+            .map(|(position, individual)| {
+                (individual.id, (position, individual.age, individual.speed))
+            })
             .collect(),
         walls: world.count(&Cell::Wall),
         hazards: world.count(&Cell::Hazard),
@@ -38,6 +40,7 @@ fn check_individuals(simulation: &Simulation) {
         assert!(individual.age < individual.lifespan);
         assert!((0.0..=MAX_SMARTNESS).contains(&individual.smartness));
         assert!((0.0..=1.0).contains(&individual.reproduction));
+        assert!((1..=config.max_speed).contains(&individual.speed));
     }
     assert_eq!(seen, simulation.latest().population);
 }
@@ -62,17 +65,15 @@ fn check_tick(before: &Snapshot, simulation: &Simulation) {
     );
 
     let mut newborns = 0;
-    for (id, (position, age)) in &now.individuals {
-        if let Some((old_position, old_age)) = before.individuals.get(id) {
+    for (id, (position, age, speed)) in &now.individuals {
+        if let Some((old_position, old_age, old_speed)) = before.individuals.get(id) {
+            assert_eq!(speed, old_speed, "speed is fixed for life");
             assert_eq!(*age, old_age + 1, "everyone acts exactly once per tick");
             let step = position
                 .x
                 .abs_diff(old_position.x)
                 .max(position.y.abs_diff(old_position.y));
-            assert!(
-                step <= simulation.config().initial_speed,
-                "moved {step} cells"
-            );
+            assert!(step == 0 || step == *speed, "moved {step} cells");
         } else {
             assert_eq!(*age, 0, "only newborns may appear");
             newborns += 1;
@@ -192,10 +193,12 @@ fn invariants_hold_under_extreme_rules() {
         },
         Config {
             initial_speed: 3,
+            max_speed: 3,
             ..Config::for_size(16, 16)
         },
         Config {
-            initial_speed: 1_000,
+            initial_speed: 64,
+            max_speed: 64,
             ..Config::for_size(16, 16)
         },
         Config {
@@ -213,7 +216,30 @@ fn invariants_hold_under_extreme_rules() {
             ..Config::for_size(16, 16)
         },
     ];
-    for config in extremes {
+    let new_rules = [
+        Config {
+            smartness_upkeep: 100.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            max_vision: 64,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            max_speed: 64,
+            speed_upkeep: 100.0,
+            mutation_rate: 1.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            smartness_upkeep: 2.0,
+            max_vision: 5,
+            max_speed: 4,
+            speed_upkeep: 1.0,
+            ..Config::for_size(16, 16)
+        },
+    ];
+    for config in extremes.into_iter().chain(new_rules) {
         run_checked(config, 3, 150);
     }
 }

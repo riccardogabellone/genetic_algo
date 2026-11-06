@@ -49,6 +49,14 @@ pub fn triangular(rng: &mut impl RngExt, bound_a: f32, mode: f32, bound_b: f32) 
     value.clamp(low, high) // Guards against rounding just past a bound.
 }
 
+/// Rounds to a neighbouring integer so the mean is exact: 2.25 is 3 a quarter of the time.
+/// Lets fractional energy costs apply to whole-number health. `value` must be finite and >= 0.
+pub fn stochastic_round(rng: &mut impl RngExt, value: f32) -> u32 {
+    let whole = value.floor();
+    let round_up = rng.random::<f32>() < value - whole;
+    whole as u32 + u32::from(round_up)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,6 +128,15 @@ mod tests {
                     .all(|v| (0.0..=1.0).contains(v))
             );
         }
+    }
+
+    #[test]
+    fn stochastic_round_keeps_the_mean_and_exact_values() {
+        let mut rng = StdRng::seed_from_u64(8);
+        assert_eq!(stochastic_round(&mut rng, 0.0), 0);
+        assert_eq!(stochastic_round(&mut rng, 3.0), 3);
+        let total: u32 = (0..SAMPLES).map(|_| stochastic_round(&mut rng, 2.25)).sum();
+        assert!((total as f32 / SAMPLES as f32 - 2.25).abs() < 0.01);
     }
 
     #[test]

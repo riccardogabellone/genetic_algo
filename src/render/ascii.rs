@@ -51,8 +51,11 @@ pub fn stats_line(stats: &TickStats) -> String {
         || "n/a".to_owned(),
         |SmartnessSummary { mean, min, max }| format!("{mean:.2} (min {min:.2}, max {max:.2})"),
     );
+    let speed = stats
+        .mean_speed
+        .map_or_else(|| "n/a".to_owned(), |speed| format!("{speed:.2}"));
     format!(
-        "tick {:>6} | population {:>4} ({}M/{}F) | generation {:>4} | smartness {smartness}",
+        "tick {:>6} | population {:>4} ({}M/{}F) | generation {:>4} | smartness {smartness} | speed {speed}",
         stats.tick, stats.population, stats.males, stats.females, stats.max_generation
     )
 }
