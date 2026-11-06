@@ -32,6 +32,10 @@ pub struct Rules {
     pub hazard_damage: u32,
     pub mutation_rate: f32,
     pub mutation_step: f32,
+    pub contest_fights: f32,
+    pub random_fights: f32,
+    pub fight_damage: u32,
+    pub fight_smartness_loss: f32,
     pub stop_at_target: bool,
     pub target: f32,
 }
@@ -50,6 +54,10 @@ impl Default for Rules {
             hazard_damage: defaults.hazard_damage,
             mutation_rate: defaults.mutation_rate,
             mutation_step: defaults.smartness_mutation_step,
+            contest_fights: defaults.contest_fight_chance,
+            random_fights: defaults.random_fight_chance,
+            fight_damage: defaults.fight_damage,
+            fight_smartness_loss: defaults.fight_smartness_loss,
             stop_at_target: true,
             target: defaults.target_smartness,
         }
@@ -73,6 +81,10 @@ impl Rules {
         config.hazard_damage = self.hazard_damage;
         config.mutation_rate = self.mutation_rate;
         config.smartness_mutation_step = self.mutation_step;
+        config.contest_fight_chance = self.contest_fights;
+        config.random_fight_chance = self.random_fights;
+        config.fight_damage = self.fight_damage;
+        config.fight_smartness_loss = self.fight_smartness_loss;
         // The scale's maximum is unreachable in practice, because mutation keeps some
         // individuals below it. That is how "never stop for the target" is expressed.
         config.target_smartness = if self.stop_at_target {
@@ -90,14 +102,16 @@ pub enum Preset {
     VisionAndCost,
     AllRules,
     TwoStableOutcomes,
+    Fighting,
 }
 
 impl Preset {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Default,
         Self::VisionAndCost,
         Self::AllRules,
         Self::TwoStableOutcomes,
+        Self::Fighting,
     ];
 
     pub fn label(self) -> &'static str {
@@ -106,6 +120,7 @@ impl Preset {
             Self::VisionAndCost => "Vision + cost",
             Self::AllRules => "All rules",
             Self::TwoStableOutcomes => "Two outcomes",
+            Self::Fighting => "Fighting",
         }
     }
 
@@ -114,6 +129,7 @@ impl Preset {
             Self::Default => "No optional rules.",
             Self::VisionAndCost => "Vision 5, smartness cost 2. Steady, reaches the target.",
             Self::AllRules => "Adds evolving speed. Fast, but fragile on small maps.",
+            Self::Fighting => "Fights over food, and a few for no reason.",
             Self::TwoStableOutcomes => {
                 "Vision 5, smartness cost 8. Stays dumb from a normal start; \
                  stays smart with \"Start smart\" enabled."
@@ -135,6 +151,11 @@ impl Preset {
                 vision: 5,
                 max_speed: 4,
                 speed_cost: 1.0,
+                ..base
+            },
+            Self::Fighting => Rules {
+                contest_fights: 0.5,
+                random_fights: 0.02,
                 ..base
             },
             Self::TwoStableOutcomes => Rules {
@@ -479,6 +500,21 @@ mod tests {
         assert_eq!(config.max_vision, 7);
         assert_eq!(config.max_speed, 4);
         assert_eq!(config.speed_upkeep, 1.5);
+    }
+
+    #[test]
+    fn fight_edits_apply_to_the_running_simulation() {
+        let mut controller = controller();
+        controller.rules.contest_fights = 0.75;
+        controller.rules.random_fights = 0.25;
+        controller.rules.fight_damage = 40;
+        controller.rules.fight_smartness_loss = 12.0;
+        controller.apply_rules();
+        let config = controller.simulation().config();
+        assert_eq!(config.contest_fight_chance, 0.75);
+        assert_eq!(config.random_fight_chance, 0.25);
+        assert_eq!(config.fight_damage, 40);
+        assert_eq!(config.fight_smartness_loss, 12.0);
     }
 
     #[test]

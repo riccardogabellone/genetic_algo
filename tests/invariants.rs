@@ -36,9 +36,16 @@ fn check_individuals(simulation: &Simulation) {
     let mut seen = 0;
     for (_, individual) in simulation.world().individuals() {
         seen += 1;
-        assert!(individual.health > 0 && individual.health < config.max_health);
+        let can_be_wounded = config.contest_fight_chance > 0.0 || config.random_fight_chance > 0.0;
+        assert!(individual.health > 0 || can_be_wounded);
+        assert!(individual.health < config.max_health);
         assert!(individual.age < individual.lifespan);
         assert!((0.0..=MAX_SMARTNESS).contains(&individual.smartness));
+        assert!((0.0..=MAX_SMARTNESS).contains(&individual.innate_smartness));
+        assert!(individual.smartness <= individual.innate_smartness);
+        if config.fight_smartness_loss == 0.0 {
+            assert_eq!(individual.smartness, individual.innate_smartness);
+        }
         assert!((0.0..=1.0).contains(&individual.reproduction));
         assert!((1..=config.max_speed).contains(&individual.speed));
     }
@@ -239,7 +246,32 @@ fn invariants_hold_under_extreme_rules() {
             ..Config::for_size(16, 16)
         },
     ];
-    for config in extremes.into_iter().chain(new_rules) {
+    let fights = [
+        Config {
+            contest_fight_chance: 1.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            random_fight_chance: 1.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            contest_fight_chance: 1.0,
+            random_fight_chance: 1.0,
+            fight_damage: 100,
+            fight_smartness_loss: 100.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            random_fight_chance: 0.5,
+            fight_smartness_loss: 0.0,
+            max_speed: 4,
+            max_vision: 5,
+            smartness_upkeep: 2.0,
+            ..Config::for_size(16, 16)
+        },
+    ];
+    for config in extremes.into_iter().chain(new_rules).chain(fights) {
         run_checked(config, 3, 150);
     }
 }
@@ -349,6 +381,7 @@ fn the_target_counts_only_for_a_real_population() {
         generation: 0,
         gender,
         smartness: 100.0,
+        innate_smartness: 100.0,
         reproduction: 0.0,
         health: 50,
         age: 0,
@@ -448,4 +481,16 @@ fn invalid_or_resized_rules_are_rejected_and_the_old_ones_kept() {
 
     assert!(simulation.set_config(Config::for_size(32, 32)).is_err());
     assert_eq!(*simulation.config(), original);
+}
+
+#[test]
+fn without_fighting_nobody_fights_and_smartness_stays_innate() {
+    let mut simulation = Simulation::new(Config::for_size(16, 16), 1).unwrap();
+    for _ in 0..300 {
+        simulation.step();
+    }
+    assert!(simulation.history().iter().all(|h| h.events.fights == 0));
+    for (_, individual) in simulation.world().individuals() {
+        assert_eq!(individual.smartness, individual.innate_smartness);
+    }
 }

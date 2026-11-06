@@ -140,12 +140,18 @@ impl Simulation {
         self.record(events);
     }
 
-    /// Nobody else can move or kill an individual, and nothing can enter its cell while
-    /// it stands there, so each scheduled turn finds its individual still in place.
+    /// Nobody else can move or remove an individual, and nothing can enter its cell while
+    /// it stands there, so each scheduled turn finds its individual still in place. A
+    /// fatal hit leaves the victim at 0 health, and it dies when its own turn comes.
     fn take_turn(&mut self, position: Position, events: &mut TickEvents) {
         let Some(mut individual) = self.world.take_individual(position) else {
             unreachable!("individuals only leave their cell on their own turn");
         };
+        // A fatal hit from another individual's turn takes effect here.
+        if individual.health == 0 {
+            events.record_death(DeathCause::Combat);
+            return;
+        }
         let action = decide(
             &individual,
             position,
@@ -170,6 +176,13 @@ impl Simulation {
                 ate = true;
                 events.meals += 1;
             }
+            Action::FightForFood { food, victim } => {
+                self.strike(&mut individual, victim, events);
+                destination = food;
+                ate = true;
+                events.meals += 1;
+            }
+            Action::Attack { victim } => self.strike(&mut individual, victim, events),
             Action::Move(free_cell) => {
                 destination = free_cell;
             }
@@ -204,6 +217,15 @@ impl Simulation {
             }
             None => self.world.place_individual(destination, individual),
         }
+    }
+
+    fn strike(&mut self, attacker: &mut Individual, victim: Position, events: &mut TickEvents) {
+        let Some(target) = self.world.individual_mut(victim) else {
+            unreachable!("the victim was seen on the grid during this turn");
+        };
+        target.health = target.health.saturating_sub(self.config.fight_damage);
+        attacker.smartness = (attacker.smartness - self.config.fight_smartness_loss).max(0.0);
+        events.fights += 1;
     }
 
     fn give_birth(&mut self, parent: &mut Individual, partner: Position, nursery: Position) {

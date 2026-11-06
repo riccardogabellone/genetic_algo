@@ -138,3 +138,14 @@ fn hovering_every_part_of_the_map_does_not_panic() {
         }
     }
 }
+
+#[test]
+fn the_fighting_preset_reaches_the_simulation_and_the_counters_show() {
+    let mut harness = harness();
+    click(&mut harness, "Fighting");
+    let config = harness.state().controller.simulation().config();
+    assert_eq!(config.contest_fight_chance, 0.5);
+    assert_eq!(config.random_fight_chance, 0.02);
+    assert!(harness.query_by_label("Killed in fights").is_some());
+    assert!(harness.query_by_label("Fights").is_some());
+}

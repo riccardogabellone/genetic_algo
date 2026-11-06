@@ -141,6 +141,10 @@ fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) 
         };
         row("Generation", individual.generation.to_string());
         row("Smartness", format!("{:.1}", individual.smartness));
+        row(
+            "Innate smartness",
+            format!("{:.1}", individual.innate_smartness),
+        );
         row("Fertility", format!("{:.2}", individual.reproduction));
         row("Speed", individual.speed.to_string());
         row("Health", individual.health.to_string());
@@ -167,6 +171,7 @@ pub fn legend(ui: &mut egui::Ui) {
             generation: 0,
             gender,
             smartness: 100.0,
+            innate_smartness: 100.0,
             reproduction: 0.0,
             health: 1,
             age: 0,

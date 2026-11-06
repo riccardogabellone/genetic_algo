@@ -29,6 +29,7 @@ pub enum DeathCause {
     Overfed,
     OldAge,
     Hazard,
+    Combat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,8 +37,11 @@ pub struct Individual {
     pub id: u64,
     pub generation: u32,
     pub gender: Gender,
-    /// Heritable: chance per turn of deciding instead of acting at random.
+    /// Chance per turn of deciding instead of acting at random. Starts at
+    /// `innate_smartness`; fights lower it for the rest of this individual's life.
     pub smartness: f32,
+    /// The heritable part of smartness, which fights do not touch.
+    pub innate_smartness: f32,
     /// Heritable: chance in `0..=1` that a mating attempt succeeds.
     pub reproduction: f32,
     pub health: u32,
@@ -49,11 +53,13 @@ pub struct Individual {
 
 impl Individual {
     pub fn founder(id: u64, gender: Gender, config: &Config, rng: &mut impl RngExt) -> Self {
+        let smartness = config.founder_smartness.sample(rng);
         Self {
             id,
             generation: 0,
             gender,
-            smartness: config.founder_smartness.sample(rng),
+            smartness,
+            innate_smartness: smartness,
             reproduction: config.founder_reproduction.sample(rng),
             health: config.founder_health.sample(rng) as u32,
             age: 0,
@@ -75,7 +81,7 @@ impl Individual {
         rng: &mut impl RngExt,
     ) -> Self {
         let smartness = mutate(
-            inherit(parent_a.smartness, parent_b.smartness, rng),
+            inherit(parent_a.innate_smartness, parent_b.innate_smartness, rng),
             config.smartness_mutation_step,
             MAX_SMARTNESS,
             config.mutation_rate,
@@ -93,6 +99,7 @@ impl Individual {
             generation: parent_a.generation.max(parent_b.generation) + 1,
             gender: Gender::random(rng),
             smartness,
+            innate_smartness: smartness,
             reproduction,
             health: config.mating_cost * 2,
             age: 0,
@@ -158,6 +165,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1);
         Individual {
             smartness,
+            innate_smartness: smartness,
             ..Individual::founder(0, Gender::Male, config, &mut rng)
         }
     }
@@ -235,6 +243,23 @@ mod tests {
             Individual::offspring(1, &a, &a, &config, &mut rng).smartness,
             33.0
         );
+    }
+
+    /// Damage from fights is a scar, not a gene.
+    #[test]
+    fn children_inherit_innate_smartness_not_the_current_value() {
+        let config = Config {
+            mutation_rate: 0.0,
+            ..Config::default()
+        };
+        let scarred = Individual {
+            smartness: 0.0,
+            ..parent(&config, 60.0)
+        };
+        let mut rng = StdRng::seed_from_u64(9);
+        let child = Individual::offspring(1, &scarred, &scarred, &config, &mut rng);
+        assert_eq!(child.smartness, 60.0);
+        assert_eq!(child.innate_smartness, 60.0);
     }
 
     #[test]

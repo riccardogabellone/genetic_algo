@@ -33,6 +33,7 @@ pub fn adult(id: u64, gender: Gender, smartness: f32) -> Individual {
         generation: 0,
         gender,
         smartness,
+        innate_smartness: smartness,
         reproduction: 1.0,
         health: 50,
         age: 10,

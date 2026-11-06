@@ -10,6 +10,8 @@ pub struct SmartnessSummary {
     pub mean: f32,
     pub min: f32,
     pub max: f32,
+    /// Mean of the heritable part. Falls below `mean` only through fights.
+    pub innate_mean: f32,
 }
 
 /// What happened during one tick.
@@ -21,6 +23,8 @@ pub struct TickEvents {
     pub overfed: u32,
     pub old_age: u32,
     pub hazard: u32,
+    pub combat: u32,
+    pub fights: u32,
 }
 
 impl TickEvents {
@@ -30,11 +34,12 @@ impl TickEvents {
             DeathCause::Overfed => self.overfed += 1,
             DeathCause::OldAge => self.old_age += 1,
             DeathCause::Hazard => self.hazard += 1,
+            DeathCause::Combat => self.combat += 1,
         }
     }
 
     pub fn deaths(&self) -> u32 {
-        self.starved + self.overfed + self.old_age + self.hazard
+        self.starved + self.overfed + self.old_age + self.hazard + self.combat
     }
 
     pub fn add(&mut self, other: &Self) {
@@ -44,6 +49,8 @@ impl TickEvents {
         self.overfed += other.overfed;
         self.old_age += other.old_age;
         self.hazard += other.hazard;
+        self.combat += other.combat;
+        self.fights += other.fights;
     }
 }
 
@@ -65,6 +72,7 @@ impl TickStats {
     pub fn measure(tick: u32, world: &World, events: TickEvents) -> Self {
         let (mut males, mut females, mut max_generation, mut total_speed) = (0, 0, 0, 0);
         let (mut sum, mut min, mut max) = (0.0_f64, f32::INFINITY, f32::NEG_INFINITY);
+        let mut innate_sum = 0.0_f64;
         for (_, individual) in world.individuals() {
             match individual.gender {
                 Gender::Male => males += 1,
@@ -72,6 +80,7 @@ impl TickStats {
             }
             total_speed += individual.speed;
             sum += f64::from(individual.smartness);
+            innate_sum += f64::from(individual.innate_smartness);
             min = min.min(individual.smartness);
             max = max.max(individual.smartness);
             max_generation = max_generation.max(individual.generation);
@@ -86,6 +95,7 @@ impl TickStats {
                 mean: (sum / population as f64) as f32,
                 min,
                 max,
+                innate_mean: (innate_sum / population as f64) as f32,
             }),
             mean_speed: (population > 0).then(|| total_speed as f32 / population as f32),
             max_generation,

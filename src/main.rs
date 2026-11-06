@@ -43,6 +43,18 @@ struct Args {
     /// Extra health per point of speed above 1, on turns that change cell.
     #[arg(long, default_value_t = 0.0)]
     speed_cost: f32,
+    /// Chance that a hungry individual strikes a rival racing for the same food.
+    #[arg(long, default_value_t = 0.0)]
+    contest_fights: f32,
+    /// Chance per turn of an unprovoked attack at smartness 0, falling to 0 at maximum.
+    #[arg(long, default_value_t = 0.0)]
+    random_fights: f32,
+    /// Health the victim of a fight loses [default: from the rules].
+    #[arg(long)]
+    fight_damage: Option<u32>,
+    /// Current smartness the attacker loses; not inherited [default: from the rules].
+    #[arg(long)]
+    fight_smartness_loss: Option<f32>,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -86,6 +98,14 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
         speed_upkeep: args.speed_cost,
         ..Config::for_size(args.width, args.height)
     };
+    config.contest_fight_chance = args.contest_fights;
+    config.random_fight_chance = args.random_fights;
+    if let Some(damage) = args.fight_damage {
+        config.fight_damage = damage;
+    }
+    if let Some(loss) = args.fight_smartness_loss {
+        config.fight_smartness_loss = loss;
+    }
     if let Some(ticks) = args.ticks {
         config.max_ticks = ticks;
     }
@@ -202,5 +222,13 @@ fn print_summary(
         totals.overfed,
         totals.old_age,
         totals.hazard
-    )
+    )?;
+    if totals.fights > 0 {
+        writeln!(
+            out,
+            "fights {} | killed in fights {}",
+            totals.fights, totals.combat
+        )?;
+    }
+    Ok(())
 }

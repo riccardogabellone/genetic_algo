@@ -60,6 +60,16 @@ pub struct Config {
     pub turn_cost: u32,
     pub hazard_damage: u32,
 
+    // Fighting
+    /// Chance that a hungry individual strikes a rival racing for the same food.
+    pub contest_fight_chance: f32,
+    /// Chance per turn of an unprovoked attack, at smartness 0. Falls to 0 at maximum smartness.
+    pub random_fight_chance: f32,
+    /// Health the victim loses. A hit that leaves 0 kills on the victim's next turn.
+    pub fight_damage: u32,
+    /// Current smartness the attacker loses. Never inherited.
+    pub fight_smartness_loss: f32,
+
     // Life cycle
     pub min_lifespan: u32,
     pub max_lifespan: u32,
@@ -129,6 +139,11 @@ impl Config {
             turn_cost: 1,
             hazard_damage: 15,
 
+            contest_fight_chance: 0.0,
+            random_fight_chance: 0.0,
+            fight_damage: 10,
+            fight_smartness_loss: 5.0,
+
             min_lifespan: 50,
             max_lifespan: 100,
             maturity_age: 5,
@@ -143,6 +158,7 @@ impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.validate_world()?;
         self.validate_traits()?;
+        self.validate_fighting()?;
         self.validate_life_cycle()
     }
 
@@ -213,6 +229,22 @@ impl Config {
         require(
             (0.0..=1.0).contains(&self.reproduction_mutation_step),
             "reproduction_mutation_step must be within 0..=1",
+        )
+    }
+
+    fn validate_fighting(&self) -> Result<(), ConfigError> {
+        require(
+            (0.0..=1.0).contains(&self.contest_fight_chance)
+                && (0.0..=1.0).contains(&self.random_fight_chance),
+            "fight chances must be within 0..=1",
+        )?;
+        require(
+            self.fight_damage > 0 && self.fight_damage <= self.max_health,
+            "fight_damage must be between 1 and max_health",
+        )?;
+        require(
+            (0.0..=MAX_SMARTNESS).contains(&self.fight_smartness_loss),
+            "fight_smartness_loss must be within the smartness scale",
         )
     }
 
@@ -346,5 +378,11 @@ mod tests {
         assert!(rejects(|c| c.smartness_upkeep = f32::NAN));
         assert!(rejects(|c| c.smartness_upkeep = -1.0));
         assert!(rejects(|c| c.speed_upkeep = f32::INFINITY));
+        assert!(rejects(|c| c.contest_fight_chance = 1.5));
+        assert!(rejects(|c| c.random_fight_chance = f32::NAN));
+        assert!(rejects(|c| c.fight_damage = 0));
+        assert!(rejects(|c| c.fight_damage = c.max_health + 1));
+        assert!(rejects(|c| c.fight_smartness_loss = -1.0));
+        assert!(rejects(|c| c.fight_smartness_loss = MAX_SMARTNESS + 1.0));
     }
 }

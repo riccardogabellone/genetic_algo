@@ -52,6 +52,13 @@ Tutti i valori numerici sono in `src/config.rs`. Tra parentesi i default.
 - **Velocità ereditabile** (`--max-speed`): il figlio eredita la velocità da un genitore, e può mutare di ±1
 - **Costo della velocità** (`--speed-cost`): "health" extra per ogni punto di velocità sopra 1, nei turni in cui cambia casella
 
+### Combattimenti (spenti di default)
+- **Per il cibo** (`--contest-fights`): chi ha fame e sta per mangiare può colpire un rivale a contatto, anch'esso affamato e in grado di raggiungere lo stesso FOOD; poi mangia
+- **Senza motivo** (`--random-fights`): probabilità a ogni turno di attaccare un Individuo a portata, massima con smartness 0 e nulla con smartness 100
+- chi subisce perde "health" (`--fight-damage`, 10); se arriva a 0 muore all'inizio del proprio turno, senza agire
+- chi colpisce perde smartness attuale (`--fight-smartness-loss`, 5), fino a 0
+- **la perdita non si eredita**: ogni Individuo ha una smartness innata, ereditabile, e una attuale, che guida il comportamento e che i combattimenti abbassano
+
 ### Fine della simulazione
 La simulazione termina alla prima di queste condizioni:
 - estinzione
@@ -119,6 +126,20 @@ Means over 8 runs of 60,000 ticks on 32x32, started from low smartness (1-5) and
 | All: cost 4, vision 5, speed cost 2 | 95.8 | 95.8 | 2.7 | 85 |
 
 Extinct runs within 20,000 ticks, out of 60: the all-rules sets lose 0 to 1 on 32x32 but 18 to 45 on 16x16. `cargo run --release --example rule_experiments -- 8 60000` reruns the from-low rule sets it includes, each with a control; the high starts and the extinction counts were one-off experiments.
+
+Fighting, over 24 runs of 20,000 ticks on 32x32. Founders are nearly random and so reckless: extinctions happen around tick 250, and a smart start avoids them.
+
+| Fights over food / for no reason / damage | Start | Extinct | Current | Innate | Population |
+|---|---|---|---|---|---|
+| 0.5 / 0.02 / 10 | Normal | 0 | 91.7 | 95.1 | 531 |
+| 0 / 0.05 / 10 | Normal | 0 | 94.8 | 94.9 | 633 |
+| 0 / 0.1 / 10 | Normal | 21 | 94.9 | 95.2 | 624 |
+| 0 / 0.05 / 20 | Normal | 15 | 94.9 | 95.0 | 626 |
+| 0 / 0.05 / 20 | Smart | 0 | 94.8 | 94.9 | 625 |
+| 0 / 0.5 / 20 | Smart | 0 | 94.5 | 96.3 | 477 |
+| 1 / 0 / 20 | Smart | 0 | 88.3 | 95.2 | 345 |
+
+Smartness and population are means over the surviving runs.
 
 # Testing
 ```sh

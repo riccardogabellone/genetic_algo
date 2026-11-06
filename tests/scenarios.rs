@@ -10,6 +10,7 @@ use genetic_algo::{
         Gender::{Female, Male},
         Individual,
     },
+    simulation::Simulation,
     world::{Cell, Position, World},
 };
 
@@ -415,6 +416,257 @@ fn speed_upkeep_is_charged_only_on_turns_that_change_cell() {
         simulation_with(config.clone(), world_with_center(adult(1, Male, 100.0)), 1);
     simulation.step();
     assert_eq!(only_individual(&simulation).1.health, 50 - config.turn_cost);
+}
+
+// ---------- Fighting ----------
+
+const LEFT: Position = Position { x: 1, y: 2 };
+const RIGHT: Position = Position { x: 3, y: 2 };
+
+fn individual_with_id(simulation: &Simulation, id: u64) -> Option<Individual> {
+    simulation
+        .world()
+        .individuals()
+        .find(|(_, individual)| individual.id == id)
+        .map(|(_, individual)| individual.clone())
+}
+
+/// A reckless attacker next to a smart victim, which never starts a fight itself.
+fn duel() -> World {
+    let mut world = World::new(5, 5);
+    world.place_individual(CENTER, adult(1, Male, 0.0));
+    world.place_individual(RIGHT, adult(2, Male, 100.0));
+    world
+}
+
+#[test]
+fn an_unprovoked_attack_hurts_the_victim_and_costs_the_attacker_smartness() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    let attacker = adult(1, Male, 20.0);
+    let mut world = World::new(5, 5);
+    // A chance of 1 at smartness 0 is 0.8 at smartness 20, so give it several tries.
+    world.place_individual(CENTER, attacker);
+    world.place_individual(RIGHT, adult(2, Male, 100.0));
+    let mut simulation = simulation_with(config.clone(), world, 1);
+    while simulation.latest().events.fights == 0 {
+        simulation.step();
+    }
+    let attacker = individual_with_id(&simulation, 1).unwrap();
+    assert_eq!(attacker.smartness, 20.0 - config.fight_smartness_loss);
+    assert_eq!(attacker.innate_smartness, 20.0);
+    assert_eq!(simulation.latest().events.fights, 1);
+}
+
+#[test]
+fn the_exact_cost_of_a_blow() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    let mut simulation = simulation_with(config.clone(), duel(), 1);
+    simulation.step();
+    let victim = individual_with_id(&simulation, 2).unwrap();
+    let attacker = individual_with_id(&simulation, 1).unwrap();
+    assert_eq!(attacker.smartness, 0.0, "smartness never goes below zero");
+    assert!(victim.health < 50 - config.fight_damage + 1);
+    assert_eq!(simulation.latest().events.fights, 1);
+    assert_eq!(
+        attacker.health,
+        50 - config.turn_cost,
+        "the attacker takes no damage"
+    );
+}
+
+#[test]
+fn maximum_smartness_never_attacks_without_a_reason() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    for seed in 0..SEEDS {
+        let mut world = World::new(5, 5);
+        world.place_individual(CENTER, adult(1, Male, 100.0));
+        world.place_individual(RIGHT, adult(2, Male, 100.0));
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        assert_eq!(simulation.latest().events.fights, 0);
+    }
+}
+
+#[test]
+fn unprovoked_attacks_are_more_frequent_for_the_less_smart() {
+    let config = Config {
+        random_fight_chance: 0.5,
+        ..scenario_config()
+    };
+    let fights_at = |smartness: f32| -> u32 {
+        (0..400)
+            .map(|seed| {
+                let mut world = World::new(5, 5);
+                world.place_individual(CENTER, adult(1, Male, smartness));
+                world.place_individual(RIGHT, adult(2, Female, 100.0));
+                let mut simulation = simulation_with(config.clone(), world, seed);
+                simulation.step();
+                simulation.latest().events.fights
+            })
+            .sum()
+    };
+    let (reckless, careful) = (fights_at(0.0), fights_at(80.0));
+    assert!(reckless > careful * 2, "{reckless} vs {careful}");
+}
+
+#[test]
+fn nobody_to_hit_means_no_fight() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    let mut simulation = simulation_with(config, world_with_center(adult(1, Male, 0.0)), 1);
+    simulation.step();
+    assert_eq!(simulation.latest().events.fights, 0);
+    assert_eq!(only_individual(&simulation).1.smartness, 0.0);
+}
+
+/// Regression guard for the turn loop: the victim must not vanish during another turn.
+#[test]
+fn a_fatal_hit_kills_exactly_once_and_on_the_victims_own_turn() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    for seed in 0..SEEDS {
+        let mut world = duel();
+        if let Some(victim) = world.individual_mut(RIGHT) {
+            victim.health = 1;
+        }
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        simulation.step();
+
+        assert!(individual_with_id(&simulation, 2).is_none());
+        let history = simulation.history();
+        let total = |read: fn(&genetic_algo::stats::TickEvents) -> u32| -> u32 {
+            history.iter().map(|h| read(&h.events)).sum()
+        };
+        // The victim may also starve first if it acts before the blow lands.
+        assert_eq!(total(|e| e.combat) + total(|e| e.starved), 1, "seed {seed}");
+        assert_eq!(simulation.latest().population, 1);
+    }
+}
+
+#[test]
+fn a_dying_individual_is_not_hit_again_or_able_to_act() {
+    let config = Config {
+        random_fight_chance: 1.0,
+        fight_damage: 100,
+        ..scenario_config()
+    };
+    for seed in 0..SEEDS {
+        let mut world = duel();
+        world.place_individual(LEFT, adult(3, Male, 0.0));
+        world.set(Position { x: 3, y: 3 }, Cell::Food);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        for _ in 0..4 {
+            simulation.step();
+        }
+        // Each 100-damage blow fells exactly one individual, which has either died on
+        // its turn or is still waiting for it. So nobody was struck after reaching 0.
+        let events = simulation.history();
+        let fights: u32 = events.iter().map(|h| h.events.fights).sum();
+        let combat: u32 = events.iter().map(|h| h.events.combat).sum();
+        let waiting = simulation
+            .world()
+            .individuals()
+            .filter(|(_, individual)| individual.health == 0)
+            .count() as u32;
+        assert_eq!(fights, combat + waiting, "seed {seed}");
+    }
+}
+
+fn food_race(first_health: u32, second_health: u32) -> World {
+    let mut world = World::new(5, 5);
+    let mut first = adult(1, Male, 100.0);
+    let mut second = adult(2, Male, 100.0);
+    first.health = first_health;
+    second.health = second_health;
+    // Both touch the food and each other, so either can strike the other.
+    world.place_individual(LEFT, first);
+    world.place_individual(Position { x: 2, y: 1 }, second);
+    world.set(CENTER, Cell::Food);
+    world
+}
+
+#[test]
+fn hungry_rivals_fight_and_the_winner_gets_the_food() {
+    let config = Config {
+        contest_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    for seed in 0..SEEDS {
+        let mut simulation = simulation_with(config.clone(), food_race(50, 50), seed);
+        simulation.step();
+        let events = simulation.latest().events;
+        assert_eq!(events.fights, 1, "seed {seed}");
+        assert_eq!(events.meals, 1, "seed {seed}");
+        let Cell::Individual(winner) = simulation.world().get(CENTER) else {
+            panic!("the winner stands where the food was");
+        };
+        assert_eq!(winner.health, 50 + config.food_gain);
+        assert_eq!(winner.smartness, 100.0 - config.fight_smartness_loss);
+        let loser_id = 3 - winner.id;
+        let loser = individual_with_id(&simulation, loser_id).unwrap();
+        assert_eq!(loser.health, 50 - config.fight_damage - config.turn_cost);
+        assert_eq!(loser.smartness, 100.0);
+    }
+}
+
+#[test]
+fn a_sated_rival_is_not_a_rival() {
+    let config = Config {
+        contest_fight_chance: 1.0,
+        hungry_below_health: 40,
+        ..scenario_config()
+    };
+    // The hungry one eats; the other has no interest in the food, so no fight starts.
+    // Several seeds, because the outcome depends on who acts first.
+    for seed in 0..SEEDS {
+        let mut simulation = simulation_with(config.clone(), food_race(30, 50), seed);
+        simulation.step();
+        assert_eq!(simulation.latest().events.fights, 0, "seed {seed}");
+        assert_eq!(simulation.latest().events.meals, 1, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_rival_that_cannot_reach_the_food_is_left_alone() {
+    let config = Config {
+        contest_fight_chance: 1.0,
+        ..scenario_config()
+    };
+    let mut world = World::new(5, 5);
+    world.place_individual(CENTER, adult(1, Male, 100.0));
+    world.place_individual(LEFT, adult(2, Male, 100.0));
+    world.set(RIGHT, Cell::Food);
+    // Walled in, so the rival cannot wander within reach of the food first.
+    for position in world.ring(LEFT, 1) {
+        if position != CENTER {
+            world.set(position, Cell::Wall);
+        }
+    }
+    let mut simulation = simulation_with(config, world, 1);
+    simulation.step();
+    assert_eq!(simulation.latest().events.fights, 0);
+}
+
+#[test]
+fn contests_can_be_switched_off() {
+    let mut simulation = simulation_with(scenario_config(), food_race(50, 50), 1);
+    simulation.step();
+    assert_eq!(simulation.latest().events.fights, 0);
+    assert_eq!(simulation.latest().events.meals, 1);
 }
 
 // ---------- Reproduction ----------

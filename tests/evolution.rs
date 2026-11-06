@@ -4,7 +4,7 @@
 //! so mutation pushes it up even if it is useless. Only the gap against a control run,
 //! where smartness has no behavioural effect, is evidence of natural selection.
 
-use genetic_algo::{config::Config, simulation::Simulation};
+use genetic_algo::{config::Config, sampling::Spread, simulation::Simulation};
 
 const SEEDS: u64 = 4;
 const TICKS: u32 = 2_000;
@@ -137,4 +137,82 @@ fn speed_evolves_upward_and_its_cost_restrains_it() {
     let (_, priced) = final_traits(&priced_rules, TICKS);
     assert!(free > 2.0, "free speed {free:.2}");
     assert!(priced < free - 0.5, "priced {priced:.2} vs free {free:.2}");
+}
+
+/// Runs `rules` to the end on each seed and returns the populations left.
+fn survivors(rules: &Config, ticks: u32) -> Vec<usize> {
+    (0..SEEDS)
+        .map(|seed| {
+            let config = Config {
+                max_ticks: ticks,
+                target_smartness: 100.0,
+                ..rules.clone()
+            };
+            let mut simulation = Simulation::new(config, seed).unwrap();
+            simulation.run_to_end();
+            simulation.latest().population
+        })
+        .collect()
+}
+
+/// Founders are nearly random, so they are reckless. The same violence that wipes them
+/// out barely touches a population that is already smart.
+#[test]
+fn heavy_violence_destroys_dumb_founders_but_not_smart_ones() {
+    let violent = Config {
+        random_fight_chance: 0.5,
+        fight_damage: 20,
+        ..Config::default()
+    };
+    let smart_start = Config {
+        founder_smartness: Spread {
+            min: 85.0,
+            mode: 90.0,
+            max: 95.0,
+        },
+        ..violent.clone()
+    };
+    assert_eq!(survivors(&violent, 1_000), vec![0; SEEDS as usize]);
+    assert!(
+        survivors(&smart_start, 1_000)
+            .iter()
+            .all(|alive| *alive > 50)
+    );
+}
+
+#[test]
+fn fights_lower_current_smartness_but_not_what_is_inherited() {
+    let peaceful = final_innate_and_current(&Config::default());
+    let fighting = final_innate_and_current(&Config {
+        contest_fight_chance: 0.5,
+        random_fight_chance: 0.02,
+        ..Config::default()
+    });
+    assert_eq!(peaceful.0, peaceful.1, "no fights, no scars");
+    assert!(fighting.1 < fighting.0 - 0.5, "{fighting:?}");
+    assert!(
+        (fighting.0 - peaceful.0).abs() < 15.0,
+        "{fighting:?} vs {peaceful:?}"
+    );
+}
+
+/// Mean innate and current smartness at the end, across seeds.
+fn final_innate_and_current(rules: &Config) -> (f32, f32) {
+    let (mut innate, mut current) = (0.0, 0.0);
+    for seed in 0..SEEDS {
+        let config = Config {
+            max_ticks: TICKS,
+            target_smartness: 100.0,
+            ..rules.clone()
+        };
+        let mut simulation = Simulation::new(config, seed).unwrap();
+        simulation.run_to_end();
+        let summary = simulation
+            .latest()
+            .smartness
+            .expect("the population survives");
+        innate += summary.innate_mean;
+        current += summary.mean;
+    }
+    (innate / SEEDS as f32, current / SEEDS as f32)
 }

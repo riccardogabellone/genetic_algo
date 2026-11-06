@@ -49,7 +49,7 @@ pub fn legend() -> &'static str {
 pub fn stats_line(stats: &TickStats) -> String {
     let smartness = stats.smartness.as_ref().map_or_else(
         || "n/a".to_owned(),
-        |SmartnessSummary { mean, min, max }| format!("{mean:.2} (min {min:.2}, max {max:.2})"),
+        |SmartnessSummary { mean, min, max, .. }| format!("{mean:.2} (min {min:.2}, max {max:.2})"),
     );
     let speed = stats
         .mean_speed

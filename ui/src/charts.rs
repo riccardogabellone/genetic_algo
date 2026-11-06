@@ -47,7 +47,13 @@ fn base_plot(id: &str, height: f32) -> Plot<'static> {
         .include_y(0.0)
 }
 
-pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, show_speed: bool) {
+pub fn show(
+    ui: &mut egui::Ui,
+    history: &[TickStats],
+    target: Option<f32>,
+    show_speed: bool,
+    show_innate: bool,
+) {
     let points = thin(history);
     let panels = if show_speed { 3.0 } else { 2.0 };
     let headings = panels * 26.0;
@@ -74,6 +80,15 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, show_
                     .color(SERIES)
                     .width(2.0),
             );
+            if show_innate {
+                plot.line(
+                    series("Innate mean", &points, |s| {
+                        s.smartness.map(|v| f64::from(v.innate_mean))
+                    })
+                    .color(TARGET)
+                    .width(1.5),
+                );
+            }
             if let Some(target) = target {
                 plot.hline(
                     HLine::new("Target", f64::from(target))

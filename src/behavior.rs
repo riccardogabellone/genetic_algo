@@ -8,6 +8,9 @@ use crate::{
     world::{Cell, Position, World},
 };
 
+/// The rate of unprovoked attacks when smartness is switched off for a control run.
+const CONTROL_RECKLESSNESS: f32 = 0.5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Mate {
@@ -15,6 +18,14 @@ pub enum Action {
         nursery: Position,
     },
     Eat(Position),
+    /// Strikes a rival racing for the same food, then eats it.
+    FightForFood {
+        food: Position,
+        victim: Position,
+    },
+    Attack {
+        victim: Position,
+    },
     Move(Position),
     TouchHazard,
     Stay,
@@ -32,10 +43,13 @@ pub fn decide(
     if let Some(action) = try_to_mate(individual, position, &reachable, world, config, rng) {
         return action;
     }
+    if let Some(action) = try_random_attack(individual, &reachable, world, config, rng) {
+        return action;
+    }
     if thinks_this_turn(individual, config, rng) {
         deliberate(individual, position, &reachable, world, config, rng)
     } else {
-        act_at_random(&reachable, world, rng)
+        act_at_random(individual, &reachable, world, config, rng)
     }
 }
 
@@ -74,6 +88,73 @@ fn try_to_mate(
         })
 }
 
+/// An attack for no reason, more likely the less smart the attacker is.
+fn try_random_attack(
+    individual: &Individual,
+    reachable: &[Position],
+    world: &World,
+    config: &Config,
+    rng: &mut impl RngExt,
+) -> Option<Action> {
+    if config.random_fight_chance <= 0.0 {
+        return None;
+    }
+    // In the control experiment smartness must have no effect, so the rate is flat.
+    let recklessness = if config.smartness_affects_behavior {
+        1.0 - individual.smartness / MAX_SMARTNESS
+    } else {
+        CONTROL_RECKLESSNESS
+    };
+    let chance = f64::from(config.random_fight_chance * recklessness);
+    if !rng.random_bool(chance.clamp(0.0, 1.0)) {
+        return None;
+    }
+    let victims: Vec<Position> = reachable
+        .iter()
+        .copied()
+        .filter(
+            |position| matches!(world.get(*position), Cell::Individual(other) if other.health > 0),
+        )
+        .collect();
+    let victim = *victims.choose(rng)?;
+    Some(Action::Attack { victim })
+}
+
+/// Eats `food`, possibly striking a hungry rival that could also reach it.
+fn eat(
+    individual: &Individual,
+    food: Position,
+    reachable: &[Position],
+    world: &World,
+    config: &Config,
+    rng: &mut impl RngExt,
+) -> Action {
+    if config.contest_fight_chance <= 0.0 || individual.health >= config.hungry_below_health {
+        return Action::Eat(food);
+    }
+    let rivals: Vec<Position> = reachable
+        .iter()
+        .copied()
+        .filter(|position| match world.get(*position) {
+            Cell::Individual(other) => {
+                other.health > 0
+                    && other.health < config.hungry_below_health
+                    && world.ring(*position, other.speed).contains(&food)
+            }
+            _ => false,
+        })
+        .collect();
+    match rivals.choose(rng) {
+        Some(victim) if rng.random_bool(f64::from(config.contest_fight_chance)) => {
+            Action::FightForFood {
+                food,
+                victim: *victim,
+            }
+        }
+        _ => Action::Eat(food),
+    }
+}
+
 fn thinks_this_turn(individual: &Individual, config: &Config, rng: &mut impl RngExt) -> bool {
     config.smartness_affects_behavior
         && individual.smartness >= config.min_smartness_for_decisions
@@ -92,7 +173,7 @@ fn deliberate(
 ) -> Action {
     if individual.health < config.hungry_below_health {
         if let Some(food) = choose_cell(reachable, world, rng, |cell| *cell == Cell::Food) {
-            return Action::Eat(food);
+            return eat(individual, food, reachable, world, config, rng);
         }
         let vision = vision_radius(individual.smartness, config);
         if let Some(step) = step_toward_food(position, vision, reachable, world, rng) {
@@ -139,13 +220,19 @@ fn step_toward_food(
 }
 
 /// Picks any reachable cell and suffers the consequences.
-fn act_at_random(reachable: &[Position], world: &World, rng: &mut impl RngExt) -> Action {
+fn act_at_random(
+    individual: &Individual,
+    reachable: &[Position],
+    world: &World,
+    config: &Config,
+    rng: &mut impl RngExt,
+) -> Action {
     let Some(target) = reachable.choose(rng) else {
         return Action::Stay;
     };
     match world.get(*target) {
         Cell::Empty => Action::Move(*target),
-        Cell::Food => Action::Eat(*target),
+        Cell::Food => eat(individual, *target, reachable, world, config, rng),
         Cell::Hazard => Action::TouchHazard,
         Cell::Wall | Cell::Individual(_) => Action::Stay,
     }

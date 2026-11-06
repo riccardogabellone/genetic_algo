@@ -178,6 +178,33 @@ impl App {
         track(ui.add(Slider::new(&mut rules.hazard_damage, 1..=100).text("Hazard damage")));
 
         ui.add_space(4.0);
+        ui.strong("Combat");
+        track(
+            ui.add(Slider::new(&mut rules.contest_fights, 0.0..=1.0).text("Over food"))
+                .on_hover_text(
+                    "Chance that a hungry individual strikes a rival racing for the same food.",
+                ),
+        );
+        track(
+            ui.add(Slider::new(&mut rules.random_fights, 0.0..=1.0).text("For no reason"))
+                .on_hover_text(
+                    "Chance per turn of an unprovoked attack at smartness 0, falling to 0 at maximum.",
+                ),
+        );
+        track(
+            ui.add(Slider::new(&mut rules.fight_damage, 1..=100).text("Damage"))
+                .on_hover_text("Health the victim loses."),
+        );
+        track(
+            ui.add(
+                Slider::new(&mut rules.fight_smartness_loss, 0.0..=30.0).text("Attacker's loss"),
+            )
+            .on_hover_text(
+                "Current smartness the attacker loses. Children do not inherit the loss.",
+            ),
+        );
+
+        ui.add_space(4.0);
         ui.strong("Inheritance");
         track(ui.add(Slider::new(&mut rules.mutation_rate, 0.0..=1.0).text("Mutation rate")));
         track(ui.add(Slider::new(&mut rules.mutation_step, 0.0..=30.0).text("Mutation step")));
@@ -245,6 +272,10 @@ impl App {
                     ("Old age", totals.old_age.to_string()),
                     ("Hazard", totals.hazard.to_string()),
                 );
+                row(
+                    ("Fights", totals.fights.to_string()),
+                    ("Killed in fights", totals.combat.to_string()),
+                );
             });
         ui.separator();
 
@@ -254,7 +285,11 @@ impl App {
             .then_some(controller.rules.target);
         let show_speed =
             controller.rules.max_speed > 1 || latest.mean_speed.is_some_and(|speed| speed > 1.0);
-        charts::show(ui, simulation.history(), target, show_speed);
+        let config = simulation.config();
+        let show_innate = config.contest_fight_chance > 0.0
+            || config.random_fight_chance > 0.0
+            || totals.fights > 0;
+        charts::show(ui, simulation.history(), target, show_speed, show_innate);
     }
 }
 
@@ -371,9 +406,22 @@ mod tests {
     fn the_slider_limits_cannot_produce_an_invalid_config() {
         // Every corner of the rule sliders must pass validation, or the UI could get stuck.
         let (mut app, context) = app();
-        for (cost, vision, speed, speed_cost, regrowth, gain, damage, rate, step) in [
-            (0.0, 0, 1, 0.0, 0.0, 1, 1, 0.0, 0.0),
-            (16.0, 16, 8, 8.0, 12.5, 60, 100, 1.0, 30.0),
+        for (
+            cost,
+            vision,
+            speed,
+            speed_cost,
+            regrowth,
+            gain,
+            damage,
+            rate,
+            step,
+            fights,
+            hit,
+            loss,
+        ) in [
+            (0.0, 0, 1, 0.0, 0.0, 1, 1, 0.0, 0.0, 0.0, 1, 0.0),
+            (16.0, 16, 8, 8.0, 12.5, 60, 100, 1.0, 30.0, 1.0, 100, 30.0),
         ] {
             let rules = &mut app.controller.rules;
             rules.smartness_cost = cost;
@@ -385,6 +433,10 @@ mod tests {
             rules.hazard_damage = damage;
             rules.mutation_rate = rate;
             rules.mutation_step = step;
+            rules.contest_fights = fights;
+            rules.random_fights = fights;
+            rules.fight_damage = hit;
+            rules.fight_smartness_loss = loss;
             app.controller.apply_rules();
             assert_eq!(app.controller.error(), None);
             frame(&mut app, &context, Vec::new());
