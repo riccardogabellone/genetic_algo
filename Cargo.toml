@@ -1,0 +1,15 @@
+[package]
+name = "genetic_algo"
+version = "0.2.0"
+edition = "2024"
+description = "Agent-based evolution sandbox: free-roaming individuals evolve smartness on a grid."
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+colored = "3"
+plotters = "0.3.7"
+rand = "0.10"
+
+# Keeps the statistical tests fast; they simulate thousands of ticks.
+[profile.test]
+opt-level = 2

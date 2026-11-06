@@ -1,0 +1,314 @@
+//! Every tunable rule of the simulation, validated once at start-up.
+
+use std::fmt;
+
+use crate::sampling::Spread;
+
+/// Smartness is a score in `0..=MAX_SMARTNESS`.
+pub const MAX_SMARTNESS: f32 = 100.0;
+/// Upper bound on the grid, so a typo cannot exhaust memory.
+pub const MAX_CELLS: usize = 1 << 24;
+/// Upper bound on run length; one history entry is kept per tick.
+pub const MAX_TICKS: u32 = 10_000_000;
+/// Upper bound on the health scale; every value up to here is exact in an `f32`.
+pub const MAX_HEALTH_SCALE: u32 = 1_000_000;
+
+pub const DEFAULT_WIDTH: usize = 32;
+pub const DEFAULT_HEIGHT: usize = 32;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Config {
+    // World
+    pub width: usize,
+    pub height: usize,
+    pub initial_population: usize,
+    pub initial_food: usize,
+    pub wall_count: usize,
+    pub hazard_count: usize,
+    pub food_regrowth_interval: u32,
+    pub food_regrowth_amount: usize,
+    pub max_food: usize,
+    pub max_ticks: u32,
+
+    // Smartness
+    pub target_smartness: f32,
+    /// Below this score an individual always acts at random.
+    pub min_smartness_for_decisions: f32,
+    /// Experimental control: `false` makes smartness have no effect on behaviour.
+    pub smartness_affects_behavior: bool,
+
+    // Founders
+    pub founder_smartness: Spread,
+    pub founder_reproduction: Spread,
+    pub founder_health: Spread,
+
+    // Inheritance
+    pub mutation_rate: f32,
+    pub smartness_mutation_step: f32,
+    pub reproduction_mutation_step: f32,
+
+    // Health. Reaching 0 or `max_health` kills.
+    pub max_health: u32,
+    pub hungry_below_health: u32,
+    pub food_gain: u32,
+    pub turn_cost: u32,
+    pub hazard_damage: u32,
+
+    // Life cycle
+    pub min_lifespan: u32,
+    pub max_lifespan: u32,
+    pub maturity_age: u32,
+    /// Health each parent gives up per birth; the newborn receives both shares.
+    pub mating_cost: u32,
+    pub mating_cooldown: u32,
+    /// Cells moved per turn: destinations form a square ring of `8 * speed` cells.
+    pub initial_speed: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::for_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+    }
+}
+
+impl Config {
+    /// Default rules, with element counts proportional to the grid area.
+    pub fn for_size(width: usize, height: usize) -> Self {
+        let cells = width.saturating_mul(height);
+        Self {
+            width,
+            height,
+            initial_population: cells / 8,
+            initial_food: cells / 4,
+            wall_count: cells / 32,
+            hazard_count: cells / 64,
+            food_regrowth_interval: 1,
+            food_regrowth_amount: (cells / 32).max(1),
+            max_food: cells / 4,
+            max_ticks: 10_000,
+
+            target_smartness: 80.0,
+            min_smartness_for_decisions: 1.0,
+            smartness_affects_behavior: true,
+
+            founder_smartness: Spread {
+                min: 1.0,
+                mode: 2.0,
+                max: 5.0,
+            },
+            founder_reproduction: Spread {
+                min: 0.4,
+                mode: 0.7,
+                max: 1.0,
+            },
+            founder_health: Spread {
+                min: 25.0,
+                mode: 50.0,
+                max: 75.0,
+            },
+
+            mutation_rate: 0.5,
+            smartness_mutation_step: 8.0,
+            reproduction_mutation_step: 0.1,
+
+            max_health: 100,
+            hungry_below_health: 70,
+            food_gain: 20,
+            turn_cost: 1,
+            hazard_damage: 15,
+
+            min_lifespan: 50,
+            max_lifespan: 100,
+            maturity_age: 5,
+            mating_cost: 10,
+            mating_cooldown: 3,
+            initial_speed: 1,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.validate_world()?;
+        self.validate_traits()?;
+        self.validate_life_cycle()
+    }
+
+    fn validate_world(&self) -> Result<(), ConfigError> {
+        require(
+            self.width > 0 && self.height > 0,
+            "width and height must be positive",
+        )?;
+        let cells = self
+            .width
+            .checked_mul(self.height)
+            .filter(|cells| *cells <= MAX_CELLS)
+            .ok_or(ConfigError(format!(
+                "the grid may have at most {MAX_CELLS} cells"
+            )))?;
+        let requested = [
+            self.initial_population,
+            self.initial_food,
+            self.wall_count,
+            self.hazard_count,
+        ]
+        .iter()
+        .try_fold(0_usize, |sum, count| sum.checked_add(*count));
+        require(
+            requested.is_some_and(|total| total <= cells),
+            "population and elements do not fit on the grid",
+        )?;
+        require(
+            self.food_regrowth_interval > 0,
+            "food_regrowth_interval must be positive",
+        )?;
+        require(self.max_ticks <= MAX_TICKS, "max_ticks is too large")
+    }
+
+    fn validate_traits(&self) -> Result<(), ConfigError> {
+        require(
+            self.max_health > 1 && self.max_health <= MAX_HEALTH_SCALE,
+            "max_health is out of range",
+        )?;
+        require(
+            (0.0..=MAX_SMARTNESS).contains(&self.target_smartness),
+            "target_smartness must be within the smartness scale",
+        )?;
+        require(
+            (0.0..=MAX_SMARTNESS).contains(&self.min_smartness_for_decisions),
+            "min_smartness_for_decisions must be within the smartness scale",
+        )?;
+        require(
+            within(self.founder_smartness, 0.0, MAX_SMARTNESS),
+            "invalid founder_smartness",
+        )?;
+        require(
+            within(self.founder_reproduction, 0.0, 1.0),
+            "invalid founder_reproduction",
+        )?;
+        require(
+            within(self.founder_health, 1.0, self.max_health as f32 - 1.0),
+            "founder_health must stay strictly between 0 and max_health",
+        )?;
+        require(
+            (0.0..=1.0).contains(&self.mutation_rate),
+            "mutation_rate must be within 0..=1",
+        )?;
+        require(
+            (0.0..=MAX_SMARTNESS).contains(&self.smartness_mutation_step),
+            "smartness_mutation_step must be within the smartness scale",
+        )?;
+        require(
+            (0.0..=1.0).contains(&self.reproduction_mutation_step),
+            "reproduction_mutation_step must be within 0..=1",
+        )
+    }
+
+    fn validate_life_cycle(&self) -> Result<(), ConfigError> {
+        require(self.turn_cost > 0, "turn_cost must be positive")?;
+        require(self.hazard_damage > 0, "hazard_damage must be positive")?;
+        require(
+            self.min_lifespan > 0 && self.min_lifespan <= self.max_lifespan,
+            "lifespans must satisfy 0 < min_lifespan <= max_lifespan",
+        )?;
+        require(
+            self.mating_cost > 0,
+            "mating_cost must be positive, or births create free energy",
+        )?;
+        require(
+            self.mating_cost
+                .checked_mul(2)
+                .is_some_and(|share| share < self.max_health),
+            "a newborn's health (2 * mating_cost) must be below max_health",
+        )?;
+        require(self.initial_speed > 0, "initial_speed must be positive")
+    }
+
+    /// A lone survivor hitting the target is luck, not an evolved population.
+    pub fn min_population_for_target(&self) -> usize {
+        (self.initial_population / 4).max(2)
+    }
+}
+
+fn within(spread: Spread, low: f32, high: f32) -> bool {
+    spread.is_valid() && spread.min >= low && spread.max <= high
+}
+
+fn require(condition: bool, message: &str) -> Result<(), ConfigError> {
+    if condition {
+        Ok(())
+    } else {
+        Err(ConfigError(message.to_owned()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigError(pub String);
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "invalid configuration: {}", self.0)
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rejects(change: impl FnOnce(&mut Config)) -> bool {
+        let mut config = Config::default();
+        change(&mut config);
+        config.validate().is_err()
+    }
+
+    #[test]
+    fn defaults_are_valid_at_every_small_size() {
+        for width in 1..=20 {
+            for height in 1..=20 {
+                let config = Config::for_size(width, height);
+                assert_eq!(config.validate(), Ok(()), "{width}x{height}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_empty_or_huge_grids() {
+        assert!(Config::for_size(0, 10).validate().is_err());
+        assert!(Config::for_size(10, 0).validate().is_err());
+        assert!(Config::for_size(usize::MAX, usize::MAX).validate().is_err());
+        assert!(Config::for_size(MAX_CELLS, 2).validate().is_err());
+    }
+
+    #[test]
+    fn rejects_contents_that_do_not_fit() {
+        assert!(rejects(|c| c.initial_population = c.width * c.height + 1));
+        assert!(rejects(|c| c.initial_food = usize::MAX));
+        assert!(rejects(|c| {
+            c.initial_population = usize::MAX;
+            c.wall_count = usize::MAX;
+        }));
+    }
+
+    #[test]
+    fn rejects_values_that_would_panic_or_break_the_rules() {
+        assert!(rejects(|c| c.food_regrowth_interval = 0));
+        assert!(rejects(|c| c.max_ticks = MAX_TICKS + 1));
+        assert!(rejects(|c| c.target_smartness = f32::NAN));
+        assert!(rejects(|c| c.target_smartness = MAX_SMARTNESS + 1.0));
+        assert!(rejects(|c| c.mutation_rate = 1.5));
+        assert!(rejects(|c| c.smartness_mutation_step = f32::INFINITY));
+        assert!(rejects(|c| c.smartness_mutation_step = f32::MAX));
+        assert!(rejects(|c| c.reproduction_mutation_step = 2.0));
+        assert!(rejects(|c| c.max_health = u32::MAX));
+        assert!(rejects(|c| c.turn_cost = 0));
+        assert!(rejects(|c| c.hazard_damage = 0));
+        assert!(rejects(|c| c.founder_reproduction.max = 1.3));
+        assert!(rejects(|c| c.founder_health.max = c.max_health as f32));
+        assert!(rejects(|c| c.min_lifespan = 0));
+        assert!(rejects(|c| c.min_lifespan = c.max_lifespan + 1));
+        assert!(rejects(|c| c.mating_cost = 0));
+        assert!(rejects(|c| c.mating_cost = c.max_health));
+        assert!(rejects(|c| c.mating_cost = u32::MAX));
+        assert!(rejects(|c| c.initial_speed = 0));
+    }
+}
