@@ -1,90 +1,80 @@
----
-applyTo: '**'
----
-Coding standards, domain knowledge, and preferences that AI should follow.
+# genetic_algo
 
-# Coding Standards and Preferences
-## General Guidelines
-- Use clear and descriptive variable names.
-- Write comments to explain complex logic.
-- Keep functions small and focused on a single task.
+An agent-based evolution sandbox in Rust. Individuals roam a grid freely, eat, fight, reproduce and die, and heritable traits such as smartness evolve by natural selection. Optional rules add costs, vision, evolving speed, fights and elected leaders, and every rule can be tuned live in a graphical UI.
 
-# Domain Knowledge
-We have to see little individual agents evolving in a genetic algo like environment, with the ability to do some actions to step forward the generations.
+# Rules
+Every numeric value is in `src/config.rs`. Defaults are in parentheses.
 
-## Program features
-Tutti i valori numerici sono in `src/config.rs`. Tra parentesi i default.
+- each individual has a position (x, y) on the grid; the map has hard edges
+- each individual has a speed, the radius r (1): the 8 * r cells of the square ring at distance r are its possible destinations
+- each individual has a heritable "smartness" in [0, 100]: the chance, each turn, of deciding instead of acting at random
+  - below the MIN threshold (1) it always acts at random
+- each tick, every individual alive at the start of the tick acts exactly once, in random order; newborns act from the next tick
 
-- ogni Individuo ha una posizione (x, y) nello spazio; la mappa ha bordi rigidi
-- ogni Individuo ha una velocità -> radius (r) (1) -> le 8 * r caselle del quadrato a distanza r sono le possibili destinazioni
-- ogni Individuo ha una "smartness" ereditabile in [0, 100]: è la probabilità, a ogni turno, di decidere invece di agire a caso
-  - sotto la soglia MIN (1) agisce sempre a caso
-- ogni tick, tutti gli Individui vivi all'inizio del tick agiscono una sola volta, in ordine casuale; i neonati agiscono dal tick successivo
+## Actions, by priority
+1. **Reproduction** (highest priority, for everyone regardless of smartness): needs a partner of the opposite sex within distance r, both eligible, and a free adjacent cell for the newborn
+   - eligible = "age" >= maturity (5), cooldown over (3 ticks), "health" > reproduction cost (10) + turn cost (1)
+   - succeeds with probability equal to the mean of the parents' "reproduction" traits
+2. **When it decides** (smartness):
+   - eats FOOD if hungry, that is "health" < threshold (70) (high priority)
+   - otherwise moves to a random free cell; if there is none, it stays put
+   - never steps on DEATH
+3. **When it acts at random**: picks any of its possible cells and takes the effect
+   - free -> moves there
+   - FOOD -> eats, even when full (it can die of overeating)
+   - DEATH -> loses "health" (15) and stays where it is; DEATH is not consumed
+   - WALL or another individual -> stays put
 
-### Azioni, in ordine di priorità
-1. **Riproduzione** (PRIORITY.MAX, vale per tutti, a prescindere dalla smartness): serve un partner del sesso opposto a distanza r, entrambi idonei, e una casella libera adiacente per il neonato
-   - idoneo = "age" >= maturità (5), cooldown finito (3 tick), "health" > costo riproduzione (10) + costo del turno (1)
-   - riesce con probabilità pari alla media dei tratti "reproduction" dei genitori
-2. **Se decide** (smartness):
-   - mangia FOOD se ha fame, cioè "health" < soglia (70) (PRIORITY.HIGH)
-   - altrimenti si sposta su una casella libera a caso; se non ce ne sono, resta fermo
-   - non tocca mai DEATH
-3. **Se agisce a caso**: sceglie una qualsiasi delle caselle possibili e ne subisce l'effetto
-   - libera -> si sposta
-   - FOOD -> mangia, anche se è sazio (può morire per eccesso di cibo)
-   - DEATH -> perde "health" (15) e resta dove si trova; DEATH non si consuma
-   - WALL o altro Individuo -> resta fermo
+## Life and death
+- "health": each tick it drops by 1 without food and rises by 20 with food; at 0 or at MAX (100) the individual dies
+- reproduction creates no energy: each parent gives up 10 "health" and the newborn starts with 20
+- "age" rises by 1 each tick; each individual dies on reaching its own "lifespan", random in [50, 100]
+- FOOD regrows each tick (cells / 32), up to a maximum of cells / 4; WALL and DEATH are permanent
 
-### Vita e morte
-- "health": ogni tick diminuisce di 1 se non mangia, aumenta di 20 se mangia; a 0 o a MAX (100) muore
-- la riproduzione non crea energia: ogni genitore cede 10 di "health" e il neonato parte con 20
-- "age" aumenta di 1 a ogni tick; ogni Individuo muore al raggiungimento della propria "lifespan", casuale in [50, 100]
-- FOOD ricresce a ogni tick (celle / 32), fino a un massimo di celle / 4; WALL e DEATH sono permanenti
+## Inheritance
+- the child's "smartness" and "reproduction" are drawn between the parents' values (triangular distribution)
+- with probability 0.5 each trait mutates by a symmetric step (smartness: up to ±8), clamped to its scale
+- "generation" = the parents' highest generation + 1
 
-### Ereditarietà
-- "smartness" e "reproduction" del figlio sono estratte tra i valori dei genitori (distribuzione triangolare)
-- con probabilità 0.5 ogni tratto muta di un passo simmetrico (smartness: fino a ±8), limitato alla sua scala
-- "generation" = generazione più alta dei genitori + 1
+## Optional rules (off by default)
+- **Smartness cost** (`--smartness-cost`): extra "health" lost each turn, proportional to smartness; paid even on turns spent eating
+- **Vision** (`--vision`): a hungry individual that decides walks toward the nearest visible FOOD; the radius is proportional to smartness
+- **Heritable speed** (`--max-speed`): the child inherits speed from one parent, and it can mutate by ±1
+- **Speed cost** (`--speed-cost`): extra "health" per point of speed above 1, on turns that change cell
 
-### Regole opzionali (spente di default)
-- **Costo della smartness** (`--smartness-cost`): "health" extra persa a ogni turno, proporzionale alla smartness; la paga anche chi mangia
-- **Visione** (`--vision`): chi decide e ha fame cammina verso il FOOD visibile più vicino; il raggio è proporzionale alla smartness
-- **Velocità ereditabile** (`--max-speed`): il figlio eredita la velocità da un genitore, e può mutare di ±1
-- **Costo della velocità** (`--speed-cost`): "health" extra per ogni punto di velocità sopra 1, nei turni in cui cambia casella
+## Fighting (off by default)
+- **Over food** (`--contest-fights`): a hungry individual about to eat can strike an adjacent rival that is also hungry and can reach the same FOOD; then it eats
+- **For no reason** (`--random-fights`): a chance each turn to attack an individual within reach, highest at smartness 0 and zero at smartness 100
+- the victim loses "health" (`--fight-damage`, 10); if it reaches 0 it dies at the start of its own turn, without acting
+- the attacker loses current smartness (`--fight-smartness-loss`, 5), down to 0
+- **the loss is not inherited**: each individual has an innate, heritable smartness and a current one, which drives behaviour and which fights lower
 
-### Combattimenti (spenti di default)
-- **Per il cibo** (`--contest-fights`): chi ha fame e sta per mangiare può colpire un rivale a contatto, anch'esso affamato e in grado di raggiungere lo stesso FOOD; poi mangia
-- **Senza motivo** (`--random-fights`): probabilità a ogni turno di attaccare un Individuo a portata, massima con smartness 0 e nulla con smartness 100
-- chi subisce perde "health" (`--fight-damage`, 10); se arriva a 0 muore all'inizio del proprio turno, senza agire
-- chi colpisce perde smartness attuale (`--fight-smartness-loss`, 5), fino a 0
-- **la perdita non si eredita**: ogni Individuo ha una smartness innata, ereditabile, e una attuale, che guida il comportamento e che i combattimenti abbassano
+## Leaders (off by default, `--leaders`)
+- each individual has a heritable **policy**: aggression (multiplies the chance of fighting) and appetite (the "health" threshold below which it seeks food)
+- every `--election-interval` ticks (30), or at once if the leader dies, adults vote among 5 random candidates, plus the incumbent if eligible to run again
+- nobody votes for themselves; each voter picks the policy closest to its own, adjusted by its memories
+- **memory** (`--memory`, 5): at the end of a term each voter remembers whether its "health" went up or down and whether its vote went to the winner. How many terms it remembers is proportional to its current smartness
+  - a good term favours policies similar to the winner's; a bad one disfavours them
+  - a voter who backed someone else: a good term changes its mind, a bad one proves it right
+- **judgement** (`--judge-terms`): how voters judge a finished term
+  - `violence` (default): the whole population's fight rate during the term, compared with the typical rate. Everyone reaches the same verdict
+  - `personal`: the change in the voter's own "health". This depends almost only on luck with food, so memory learns nothing
+- **term limit** (`--max-terms`, 2): nobody can be elected more than twice in their life
+- **influence** (`--leader-influence`, 0.5): each turn a follower acts on the leader's policy instead of its own with probability 0.5
+- memories and terms are not inherited
 
-### Leader (spenti di default, `--leaders`)
-- ogni Individuo ha una **politica** ereditabile: aggressività (moltiplica la probabilità di combattere) e appetito (la soglia di "health" sotto cui cerca cibo)
-- ogni `--election-interval` tick (30), o subito se il leader muore, gli adulti votano tra 5 candidati casuali, più il leader in carica se può ricandidarsi
-- nessuno vota per sé; ogni votante sceglie la politica più vicina alla propria, corretta dai ricordi
-- **memoria** (`--memory`, 5): a fine mandato ogni votante ricorda se la sua "health" è salita o scesa e se il suo voto era andato al vincitore. Quanti mandati ricorda è proporzionale alla smartness attuale
-  - mandato andato bene: favorisce politiche simili a quella del vincitore; andato male: le sfavorisce
-  - chi aveva votato un altro: un mandato andato bene lo fa ricredere, uno andato male gli dà ragione
-- **giudizio** (`--judge-terms`): come i votanti giudicano un mandato concluso
-  - `violence` (default): il tasso di combattimenti dell'intera popolazione durante il mandato, confrontato con quello tipico. Stesso giudizio per tutti
-  - `personal`: la variazione della propria "health". Dipende quasi solo dalla fortuna col cibo, quindi la memoria non impara nulla
-- **limite** (`--max-terms`, 2): nessuno può essere eletto più di due volte nella vita
-- **influenza** (`--leader-influence`, 0.5): a ogni turno un seguace agisce con probabilità 0.5 secondo la politica del leader invece che la propria
-- memorie e mandati non si ereditano
+## End of the run
+The run stops at the first of these conditions:
+- extinction
+- mean smartness >= TARGET (80), with at least INITIAL_POPULATION / 4 individuals alive (TARGET < 100 because mutation keeps everyone from staying at the maximum)
+- the tick limit (10000)
 
-### Fine della simulazione
-La simulazione termina alla prima di queste condizioni:
-- estinzione
-- smartness media >= TARGET (80), con almeno POP_INIZIALE / 4 Individui vivi (TARGET < 100 perché le mutazioni impediscono a tutti di restare al massimo)
-- limite di tick (10000)
-
-## PLOT
-- ogni tick, plotto la posizione di ogni Individuo e di ogni elemento sulla mappa
-- non compare un Individuo se è morto (rimosso comunque dalla struttura dati)
-- colori e simboli per sesso/genere (M/F), più luminosi se più "smart"
-- colori e simboli per ELEMENT: FOOD `*`, WALL `#`, DEATH `X`
-- PLOT su console (ASCII) e su file (GIF), più un grafico finale (PNG) di smartness e popolazione
+## Rendering
+- each tick, the position of every individual and every element on the map is drawn
+- dead individuals are not drawn, and are removed from the data structures
+- colours and symbols by sex (M/F), brighter when smarter
+- colours and symbols per element: FOOD `*`, WALL `#`, DEATH `X`
+- output to the console (ASCII) and to a file (GIF), plus a final chart (PNG) of smartness and population
 
 # Usage
 ```sh
@@ -182,3 +172,9 @@ cargo test --workspace
 cargo run --release --example selection_vs_control     # evolution vs a control run
 ```
 Smartness rising is not enough to prove evolution: it starts near 0 and is clamped there, so mutation alone pushes it up. Only the gap against the control, where smartness has no effect on behaviour, is evidence of natural selection.
+
+# Contributing
+Work on a branch and open a pull request against `main`. AI coding agents should follow [AGENTS.md](AGENTS.md).
+
+# License
+[MIT](LICENSE)
