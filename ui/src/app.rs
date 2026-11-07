@@ -3,15 +3,26 @@
 use std::time::Duration;
 
 use eframe::egui::{self, Key};
+use egui_notify::{Anchor, Toasts};
+use genetic_algo::world::Cell;
 
-use crate::{controller::Controller, identity, map_view, rules_panel, stats_panel, theme, toolbar};
+use crate::{
+    controller::Controller, identity, inspector, map_view, rules_panel, stats_panel, theme, toolbar,
+};
 
 /// Simulation time allowed per frame, which keeps a 60 fps window responsive.
 const FRAME_BUDGET: Duration = Duration::from_millis(10);
+const TOAST_DURATION: Duration = Duration::from_secs(6);
 
 pub struct App {
     pub controller: Controller,
+    /// The individual the inspector shows, by id.
+    pub selected: Option<u64>,
     logo: egui::TextureHandle,
+    toasts: Toasts,
+    /// What the views last saw: the run, and whether it had finished.
+    seen_run: u64,
+    seen_finished: bool,
 }
 
 impl App {
@@ -19,7 +30,13 @@ impl App {
         theme::install(context);
         Self {
             controller: Controller::new(u64::from(rand::random::<u32>())),
+            selected: None,
             logo: identity::logo_texture(context),
+            toasts: Toasts::default()
+                .with_anchor(Anchor::TopRight)
+                .with_margin(egui::vec2(12.0, 60.0)),
+            seen_run: 0,
+            seen_finished: false,
         }
     }
 
@@ -35,6 +52,7 @@ impl App {
             self.controller.toggle_running();
         }
         self.controller.advance(elapsed, FRAME_BUDGET);
+        self.notice_changes();
 
         egui::Panel::top("toolbar")
             .exact_size(48.0)
@@ -61,12 +79,45 @@ impl App {
             .show(ui, |ui| {
                 map_view::legend(ui);
                 let simulation = self.controller.simulation();
-                map_view::show(ui, simulation.world(), simulation.leadership().leader());
+                let world = simulation.world();
+                let leader = simulation.leadership().leader();
+                let map_area = ui.available_rect_before_wrap();
+                if let Some(position) = map_view::show(ui, world, leader, self.selected) {
+                    self.selected = match world.get(position) {
+                        Cell::Individual(individual) => Some(individual.id),
+                        _ => None,
+                    };
+                }
+                inspector::show(ui, map_area, world, &mut self.selected);
             });
+        self.toasts.show(ui.ctx());
 
         if self.controller.is_running() {
             ui.ctx().request_repaint();
         }
+    }
+
+    /// Reacts to what changed since the last frame: a new run drops the selection (ids
+    /// restart with it), and a run that just finished says why in a toast.
+    fn notice_changes(&mut self) {
+        if self.controller.run() != self.seen_run {
+            self.seen_run = self.controller.run();
+            self.seen_finished = false;
+            self.selected = None;
+        }
+        let finished = self.controller.simulation().outcome().is_some();
+        if finished
+            && !self.seen_finished
+            && let Some(message) = self.controller.outcome_message()
+        {
+            // Not closable: its close button is a glyph the bundled fonts lack, and the
+            // toast leaves on its own while the status strip keeps the message.
+            self.toasts
+                .warning(message)
+                .duration(TOAST_DURATION)
+                .closable(false);
+        }
+        self.seen_finished = finished;
     }
 
     /// Why the run stopped, or why an edit was refused. Shown only when there is something

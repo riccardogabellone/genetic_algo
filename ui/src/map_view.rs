@@ -14,6 +14,8 @@ use genetic_algo::{
 };
 
 const LEADER_RING: Color32 = Color32::from_rgb(255, 230, 120);
+/// The map is dark in both themes, so the selection is always white.
+const SELECTION: Color32 = Color32::WHITE;
 
 fn color((red, green, blue): Rgb) -> Color32 {
     Color32::from_rgb(red, green, blue)
@@ -58,8 +60,15 @@ impl MapLayout {
     }
 }
 
-pub fn show(ui: &mut egui::Ui, world: &World, leader: Option<u64>) {
-    let (area, response) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+/// Draws the map and returns the cell that was clicked, if any. `selected` is the
+/// individual the inspector follows, outlined wherever it moves.
+pub fn show(
+    ui: &mut egui::Ui,
+    world: &World,
+    leader: Option<u64>,
+    selected: Option<u64>,
+) -> Option<Position> {
+    let (area, response) = ui.allocate_exact_size(ui.available_size(), Sense::click());
     let layout = MapLayout::fit(area, world.width(), world.height());
     let painter = ui.painter_at(area);
 
@@ -71,19 +80,41 @@ pub fn show(ui: &mut egui::Ui, world: &World, leader: Option<u64>) {
     for (position, cell) in world.iter() {
         let rect = layout.cell_rect(position);
         draw_cell(&painter, rect, cell);
-        if matches!(cell, Cell::Individual(individual) if Some(individual.id) == leader) {
-            draw_leader_ring(&painter, rect);
+        if let Cell::Individual(individual) = cell {
+            if Some(individual.id) == leader {
+                draw_leader_ring(&painter, rect);
+            }
+            if Some(individual.id) == selected {
+                draw_selection(&painter, rect);
+            }
         }
     }
 
-    if let Some(pointer) = response.hover_pos()
-        && let Some(position) = layout.cell_at(pointer, world.width(), world.height())
-    {
+    let pointer_cell = |pointer| layout.cell_at(pointer, world.width(), world.height());
+    let clicked = response
+        .clicked()
+        .then(|| response.interact_pointer_pos().and_then(pointer_cell))
+        .flatten();
+    if let Some(position) = response.hover_pos().and_then(pointer_cell) {
         let cell = world.get(position);
         if *cell != Cell::Empty {
-            response.on_hover_ui_at_pointer(|ui| describe_cell(ui, position, cell));
+            response
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_ui_at_pointer(|ui| describe_cell(ui, position, cell));
         }
     }
+    clicked
+}
+
+/// A square outline, distinct from the leader's ring, drawn over the selected cell.
+fn draw_selection(painter: &Painter, rect: Rect) {
+    let stroke = Stroke::new((rect.width() * 0.1).max(1.5), SELECTION);
+    painter.rect_stroke(
+        rect.expand(rect.width() * 0.12),
+        rect.width() * 0.2,
+        stroke,
+        egui::StrokeKind::Outside,
+    );
 }
 
 fn draw_cell(painter: &Painter, rect: Rect, cell: &Cell) {
@@ -144,7 +175,7 @@ fn describe_cell(ui: &mut egui::Ui, position: Position, cell: &Cell) {
     }
 }
 
-fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) {
+pub fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) {
     let gender = match individual.gender {
         Gender::Male => "Male",
         Gender::Female => "Female",

@@ -8,6 +8,7 @@ repository = "https://github.com/riccardogabellone/genetic_algo"
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+egui-notify = "0.24"
 egui_material_icons = "0.9"
 egui_plot = "0.38"
 genetic_algo = { path = ".." }
