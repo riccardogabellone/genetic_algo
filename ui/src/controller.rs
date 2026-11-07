@@ -47,6 +47,8 @@ pub struct Rules {
     pub brains_inherited: bool,
     pub brain_mutation_rate: f32,
     pub brain_mutation_step: u8,
+    pub learning: bool,
+    pub learning_rate: f32,
     pub stop_at_target: bool,
     pub target: f32,
 }
@@ -79,6 +81,8 @@ impl Default for Rules {
             brains_inherited: defaults.brains_inherited,
             brain_mutation_rate: defaults.brain_mutation_rate,
             brain_mutation_step: defaults.brain_mutation_step,
+            learning: defaults.learning_enabled,
+            learning_rate: defaults.learning_rate,
             stop_at_target: true,
             target: defaults.target_smartness,
         }
@@ -116,6 +120,8 @@ impl Rules {
         config.brains_inherited = self.brains_inherited;
         config.brain_mutation_rate = self.brain_mutation_rate;
         config.brain_mutation_step = self.brain_mutation_step;
+        config.learning_enabled = self.learning;
+        config.learning_rate = self.learning_rate;
         // The scale's maximum is unreachable in practice, because mutation keeps some
         // individuals below it. That is how "never stop for the target" is expressed.
         config.target_smartness = if self.stop_at_target {
@@ -594,12 +600,16 @@ mod tests {
         controller.rules.brains_inherited = false;
         controller.rules.brain_mutation_rate = 0.3;
         controller.rules.brain_mutation_step = 20;
+        controller.rules.learning = true;
+        controller.rules.learning_rate = 0.7;
         controller.apply_rules();
         let config = controller.simulation().config();
         assert!(config.brains_enabled);
         assert!(!config.brains_inherited);
         assert_eq!(config.brain_mutation_rate, 0.3);
         assert_eq!(config.brain_mutation_step, 20);
+        assert!(config.learning_enabled);
+        assert_eq!(config.learning_rate, 0.7);
     }
 
     #[test]

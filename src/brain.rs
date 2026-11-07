@@ -2,8 +2,14 @@
 //!
 //! The same network scores every option an individual has: each cell it can reach, and
 //! staying put. It sees only a few features of that option, so it works for any speed.
-//! The highest score wins. Weights are inherited by crossover and mutation, and never
-//! change during a life: what a brain knows, it knows because its ancestors survived.
+//! The highest score wins. Weights are inherited by crossover and mutation.
+//!
+//! With lifetime learning on, a brain also learns from experience, by value learning: the
+//! score of an option learns to predict what doing it causes, such as a meal or a hazard's
+//! damage. Every turn the individual acts on a cell teaches it, whether its brain chose
+//! the cell or it acted at random, so random turns serve as exploration. Learned weights
+//! are fine-grained `f32` values that start from the inherited genome, and they die with
+//! the individual: children inherit only the genome.
 
 use rand::{RngExt, seq::IndexedRandom};
 
@@ -55,14 +61,44 @@ impl Features {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Learned weights are kept within the range the genome can express.
+const MAX_WEIGHT: f32 = 127.0 * WEIGHT_SCALE;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Brain {
     weights: [i8; WEIGHTS],
+    /// Allocated on the first lesson, so brains that never learn stay small.
+    learner: Option<Box<Learner>>,
+}
+
+/// What a brain has learned in its own life.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Learner {
+    pub weights: [f32; WEIGHTS],
 }
 
 impl Brain {
     pub fn from_weights(weights: [i8; WEIGHTS]) -> Self {
-        Self { weights }
+        Self {
+            weights,
+            learner: None,
+        }
+    }
+
+    pub fn learner(&self) -> Option<&Learner> {
+        self.learner.as_deref()
+    }
+
+    /// The weights in use: learned ones once learning has begun, the genome otherwise.
+    fn current_weights(&self) -> [f32; WEIGHTS] {
+        match &self.learner {
+            Some(learner) => learner.weights,
+            None => self.genome_weights(),
+        }
+    }
+
+    fn genome_weights(&self) -> [f32; WEIGHTS] {
+        std::array::from_fn(|index| f32::from(self.weights[index]) * WEIGHT_SCALE)
     }
 
     pub fn weights(&self) -> &[i8; WEIGHTS] {
@@ -70,9 +106,9 @@ impl Brain {
     }
 
     pub fn random(rng: &mut impl RngExt) -> Self {
-        Self {
-            weights: std::array::from_fn(|_| rng.random_range(-FOUNDER_RANGE..=FOUNDER_RANGE)),
-        }
+        Self::from_weights(std::array::from_fn(|_| {
+            rng.random_range(-FOUNDER_RANGE..=FOUNDER_RANGE)
+        }))
     }
 
     /// Each weight comes from one parent at random, then may mutate by a small step.
@@ -83,36 +119,73 @@ impl Brain {
         rng: &mut impl RngExt,
     ) -> Self {
         let step = i16::from(config.brain_mutation_step);
-        Self {
-            weights: std::array::from_fn(|index| {
-                let inherited = if rng.random() {
-                    parent_a.weights[index]
-                } else {
-                    parent_b.weights[index]
-                };
-                if step == 0 || rng.random::<f32>() >= config.brain_mutation_rate {
-                    return inherited;
-                }
-                let change = rng.random_range(-step..=step);
-                (i16::from(inherited) + change).clamp(i16::from(i8::MIN), i16::from(i8::MAX)) as i8
-            }),
-        }
+        Self::from_weights(std::array::from_fn(|index| {
+            let inherited = if rng.random() {
+                parent_a.weights[index]
+            } else {
+                parent_b.weights[index]
+            };
+            if step == 0 || rng.random::<f32>() >= config.brain_mutation_rate {
+                return inherited;
+            }
+            let change = rng.random_range(-step..=step);
+            (i16::from(inherited) + change).clamp(i16::from(i8::MIN), i16::from(i8::MAX)) as i8
+        }))
     }
 
     /// How much this brain likes an option. Only the comparison between options matters.
     pub fn score(&self, features: &Features) -> f32 {
-        let inputs = features.inputs();
-        let weight = |index: usize| f32::from(self.weights[index]) * WEIGHT_SCALE;
-        let mut score = 0.0;
-        for hidden in 0..HIDDEN {
-            let mut activation = weight(INPUTS * HIDDEN + hidden);
-            for (input, value) in inputs.iter().enumerate() {
-                activation += weight(hidden * INPUTS + input) * value;
-            }
-            score += weight(INPUTS * HIDDEN + HIDDEN + hidden) * activation.tanh();
-        }
-        score
+        forward(&self.current_weights(), &features.inputs()).0
     }
+
+    /// Learns from one turn: `option` is what the individual acted on, and `reward` what
+    /// that caused. The option's score moves toward the reward, so scores come to predict
+    /// consequences: a meal scores high, a hazard low, an ordinary move near zero.
+    pub fn learn(&mut self, option: &Features, reward: f32, config: &Config) {
+        let genome = self.genome_weights();
+        let learner = self
+            .learner
+            .get_or_insert_with(|| Box::new(Learner { weights: genome }));
+        let inputs = option.inputs();
+        let error = reward - forward(&learner.weights, &inputs).0;
+        let gradient = score_gradient(&learner.weights, &inputs);
+        let step = config.learning_rate * error;
+        for (weight, slope) in learner.weights.iter_mut().zip(gradient) {
+            *weight = (*weight + step * slope).clamp(-MAX_WEIGHT, MAX_WEIGHT);
+        }
+    }
+}
+
+/// The score, and each hidden unit's output, for one option.
+fn forward(weights: &[f32; WEIGHTS], inputs: &[f32; INPUTS]) -> (f32, [f32; HIDDEN]) {
+    let mut hidden = [0.0; HIDDEN];
+    let mut score = 0.0;
+    for (unit, output) in hidden.iter_mut().enumerate() {
+        let mut activation = weights[INPUTS * HIDDEN + unit];
+        for (input, value) in inputs.iter().enumerate() {
+            activation += weights[unit * INPUTS + input] * value;
+        }
+        *output = activation.tanh();
+        score += weights[INPUTS * HIDDEN + HIDDEN + unit] * *output;
+    }
+    (score, hidden)
+}
+
+/// How the score of one option changes with each weight.
+fn score_gradient(weights: &[f32; WEIGHTS], inputs: &[f32; INPUTS]) -> [f32; WEIGHTS] {
+    let (_, hidden) = forward(weights, inputs);
+    let mut gradient = [0.0; WEIGHTS];
+    for unit in 0..HIDDEN {
+        let output_weight = weights[INPUTS * HIDDEN + HIDDEN + unit];
+        // tanh'(x) = 1 - tanh(x)^2
+        let through = output_weight * (1.0 - hidden[unit] * hidden[unit]);
+        for (input, value) in inputs.iter().enumerate() {
+            gradient[unit * INPUTS + input] = through * value;
+        }
+        gradient[INPUTS * HIDDEN + unit] = through;
+        gradient[INPUTS * HIDDEN + HIDDEN + unit] = hidden[unit];
+    }
+    gradient
 }
 
 /// A founder's brain, if brains are on. Without them no random numbers are drawn, so runs
@@ -156,6 +229,7 @@ pub fn best_option(scores: &[f32], rng: &mut impl RngExt) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::MAX_LEARNING_RATE;
     use rand::{SeedableRng, rngs::StdRng};
 
     fn option(kind: &str) -> Features {
@@ -264,6 +338,124 @@ mod tests {
             let child = Brain::offspring(&zero, &zero, &small, &mut rng);
             assert!(child.weights().iter().all(|w| (-3..=3).contains(w)));
         }
+    }
+
+    fn learning_config() -> Config {
+        Config {
+            brains_enabled: true,
+            learning_enabled: true,
+            ..Config::default()
+        }
+    }
+
+    fn random_inputs(rng: &mut StdRng) -> Features {
+        Features {
+            empty: rng.random(),
+            food: rng.random(),
+            wall: false,
+            hazard: rng.random(),
+            individual: false,
+            stay: false,
+            hunger: rng.random(),
+            food_nearby: rng.random(),
+            hazards_nearby: rng.random(),
+        }
+    }
+
+    /// Checks the hand-written backpropagation against finite differences.
+    #[test]
+    fn score_gradient_matches_finite_differences() {
+        let mut rng = StdRng::seed_from_u64(5);
+        for _ in 0..20 {
+            let weights: [f32; WEIGHTS] = std::array::from_fn(|_| rng.random_range(-2.0..2.0));
+            let inputs = random_inputs(&mut rng).inputs();
+            let analytic = score_gradient(&weights, &inputs);
+            for index in 0..WEIGHTS {
+                let nudge = 1e-3;
+                let mut up = weights;
+                let mut down = weights;
+                up[index] += nudge;
+                down[index] -= nudge;
+                let numeric = (forward(&up, &inputs).0 - forward(&down, &inputs).0) / (2.0 * nudge);
+                assert!((numeric - analytic[index]).abs() < 1e-2, "weight {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn scores_learn_to_predict_each_options_consequence() {
+        let config = learning_config();
+        let mut rng = StdRng::seed_from_u64(8);
+        let mut brain = Brain::random(&mut rng);
+        for _ in 0..2_000 {
+            brain.learn(&option("food"), 0.2, &config);
+            brain.learn(&option("hazard"), -0.15, &config);
+            brain.learn(&option("empty"), 0.0, &config);
+        }
+        for (kind, consequence) in [("food", 0.2), ("hazard", -0.15), ("empty", 0.0)] {
+            let score = brain.score(&option(kind));
+            assert!((score - consequence).abs() < 0.03, "{kind}: {score}");
+        }
+    }
+
+    #[test]
+    fn a_learned_preference_overrides_an_inherited_one() {
+        let config = learning_config();
+        let mut brain = food_lover();
+        assert!(brain.score(&option("food")) > brain.score(&option("empty")));
+        for _ in 0..500 {
+            brain.learn(&option("food"), -0.2, &config);
+            brain.learn(&option("empty"), 0.0, &config);
+        }
+        assert!(brain.score(&option("food")) < brain.score(&option("empty")));
+    }
+
+    #[test]
+    fn learning_starts_from_the_genome_and_stays_in_range() {
+        let mut brain = food_lover();
+        assert!(brain.learner().is_none());
+        let exact = brain.score(&option("food"));
+        brain.learn(&option("food"), exact, &learning_config());
+        let learned = brain
+            .learner()
+            .expect("allocated on the first lesson")
+            .weights;
+        assert_eq!(
+            learned,
+            food_lover().genome_weights(),
+            "no surprise, no change"
+        );
+
+        let reckless = Config {
+            learning_rate: MAX_LEARNING_RATE,
+            ..learning_config()
+        };
+        for _ in 0..50 {
+            brain.learn(&option("food"), 1.0, &reckless);
+            brain.learn(&option("hazard"), -1.0, &reckless);
+        }
+        let learned = brain.learner().unwrap().weights;
+        assert!(
+            learned
+                .iter()
+                .all(|w| w.is_finite() && w.abs() <= MAX_WEIGHT)
+        );
+    }
+
+    #[test]
+    fn children_inherit_the_genome_not_what_a_parent_learned() {
+        let config = Config {
+            brain_mutation_rate: 0.0,
+            ..learning_config()
+        };
+        let mut parent = food_lover();
+        for _ in 0..50 {
+            parent.learn(&option("food"), -1.0, &config);
+        }
+        assert_ne!(parent, food_lover());
+        let mut rng = StdRng::seed_from_u64(9);
+        let child = Brain::offspring(&parent, &parent, &config, &mut rng);
+        assert_eq!(child, food_lover(), "the genome, with nothing learned");
     }
 
     #[test]

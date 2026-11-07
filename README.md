@@ -71,6 +71,12 @@ Every numeric value is in `src/config.rs`. Defaults are in parentheses.
 - mating still comes first, as for everyone
 - **control** (`--random-brains`): every child gets a fresh random brain, so nothing can accumulate across generations
 
+## Lifetime learning (off by default, `--learning`, needs `--brains`)
+- each brain also learns from experience, by value learning: the score of an option learns to predict what doing it causes. A meal is worth its food gain, a hazard its damage, an ordinary move nothing
+- every turn the individual acts on a cell teaches it, whether its brain chose the cell or it acted at random, so random turns serve as exploration
+- each lesson moves the weights by `--learning-rate` (0.2) times the prediction error, by gradient descent through the network
+- learned weights are `f32` and start from the inherited genome. They die with the individual: children inherit only the genome
+
 ## End of the run
 The run stops at the first of these conditions:
 - extinction
@@ -194,6 +200,20 @@ Starting from random weights, evolved brains reach the level of the hand-written
 | Food over an empty cell when full | 52% | 98% | 56% |
 
 Evolved brains became greedy, eating even when full, which explains their few overfed deaths.
+
+Lifetime learning, over 24 runs of 20,000 ticks on 32x32. Each value has a standard error of 1 or less; no run went extinct.
+
+| Brains | Smartness at tick 3,000 | Final smartness | Population |
+|---|---|---|---|
+| Evolved, no learning | 39.8 | 94.8 | 633 |
+| Evolved, learning at 0.2 | 38.9 | 94.8 | 633 |
+| Evolved, learning at 0.5 | 29.9 | 94.8 | 634 |
+| Random each generation, no learning | 13.7 | 28.8 | 489 |
+| Random each generation, learning at 0.2 | 18.5 | 49.4 | 439 |
+
+Learning makes thinking pay even without inherited brains, but it adds nothing to brains that already evolve, and a high rate slows early evolution by overwriting good inherited weights. Within a lifetime, learners compared with their own genome shift toward food (about 20 percentage points by age 80 at rate 0.2) and away from hazards (about 6 points).
+
+A first version learned by REINFORCE, a policy-gradient method, from the whole change in health. It learned food weakly and drifted toward hazards: it only adjusts options relative to each other, food is rewarded often and hazards are rarely tried, and the turn's fixed costs carried no information. Value learning fixed both.
 
 # Testing
 ```sh

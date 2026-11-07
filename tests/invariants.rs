@@ -331,6 +331,19 @@ fn invariants_hold_under_extreme_rules() {
             max_speed: 4,
             ..Config::for_size(16, 16)
         },
+        Config {
+            brains_enabled: true,
+            learning_enabled: true,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            brains_enabled: true,
+            brains_inherited: false,
+            learning_enabled: true,
+            learning_rate: genetic_algo::config::MAX_LEARNING_RATE,
+            random_fight_chance: 0.2,
+            ..Config::for_size(16, 16)
+        },
     ];
     for config in extremes
         .into_iter()

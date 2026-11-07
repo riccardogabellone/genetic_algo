@@ -347,3 +347,37 @@ fn evolved_brains_learn_to_eat_and_avoid_hazards() {
         "eats {eats:.2}, avoids hazards {avoids:.2}"
     );
 }
+
+/// Learning during life makes thinking pay even with no inherited brains: every child
+/// starts from a random brain, yet the population still evolves higher smartness.
+#[test]
+fn learning_rescues_random_brains() {
+    let smartness = |learning_enabled: bool| {
+        let mut total = 0.0;
+        for seed in 0..SEEDS {
+            let config = Config {
+                max_ticks: LEARNING_TICKS,
+                target_smartness: 100.0,
+                brains_enabled: true,
+                brains_inherited: false,
+                learning_enabled,
+                ..Config::default()
+            };
+            let mut simulation = Simulation::new(config, seed).unwrap();
+            simulation.run_to_end();
+            total += simulation
+                .latest()
+                .smartness
+                .expect("the population survives")
+                .mean;
+        }
+        total / SEEDS as f32
+    };
+    let (learning, fixed) = (smartness(true), smartness(false));
+    assert!(
+        learning > fixed + 3.0,
+        "learning {learning:.1}, fixed {fixed:.1}"
+    );
+}
+
+const LEARNING_TICKS: u32 = 4_000;

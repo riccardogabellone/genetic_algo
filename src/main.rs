@@ -86,6 +86,12 @@ struct Args {
     /// Largest mutation of one brain weight, in steps of 1/16 [default: from the rules].
     #[arg(long)]
     brain_mutation_step: Option<u8>,
+    /// Brains also learn from experience during their life.
+    #[arg(long, requires = "brains")]
+    learning: bool,
+    /// How fast brains learn [default: from the rules].
+    #[arg(long)]
+    learning_rate: Option<f32>,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -176,6 +182,10 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
     }
     if let Some(step) = args.brain_mutation_step {
         config.brain_mutation_step = step;
+    }
+    config.learning_enabled = args.learning;
+    if let Some(rate) = args.learning_rate {
+        config.learning_rate = rate;
     }
     if let Some(ticks) = args.ticks {
         config.max_ticks = ticks;

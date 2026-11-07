@@ -21,6 +21,8 @@ pub const MAX_RADIUS: usize = 64;
 /// Upper bounds that keep an election's cost reasonable on a crowded map.
 pub const MAX_BALLOT: usize = 64;
 pub const MAX_MEMORY: usize = 64;
+/// Keeps learning numerically sane.
+pub const MAX_LEARNING_RATE: f32 = 100.0;
 
 pub const DEFAULT_WIDTH: usize = 32;
 pub const DEFAULT_HEIGHT: usize = 32;
@@ -107,6 +109,9 @@ pub struct Config {
     pub brain_mutation_rate: f32,
     /// Largest mutation of one weight, in steps of 1/16.
     pub brain_mutation_step: u8,
+    /// Brains also learn from experience during their life. Needs brains. Off by default.
+    pub learning_enabled: bool,
+    pub learning_rate: f32,
 
     // Life cycle
     pub min_lifespan: u32,
@@ -205,6 +210,8 @@ impl Config {
             brains_inherited: true,
             brain_mutation_rate: 0.05,
             brain_mutation_step: 8,
+            learning_enabled: false,
+            learning_rate: 0.2,
 
             min_lifespan: 50,
             max_lifespan: 100,
@@ -229,6 +236,10 @@ impl Config {
         require(
             self.brain_mutation_step <= 127,
             "brain_mutation_step must be at most 127",
+        )?;
+        require(
+            (0.0..=MAX_LEARNING_RATE).contains(&self.learning_rate),
+            "learning_rate is out of range",
         )?;
         self.validate_life_cycle()
     }
@@ -494,6 +505,9 @@ mod tests {
         assert!(rejects(|c| c.brain_mutation_rate = 1.5));
         assert!(rejects(|c| c.brain_mutation_rate = f32::NAN));
         assert!(rejects(|c| c.brain_mutation_step = 128));
+        assert!(rejects(|c| c.learning_rate = -0.1));
+        assert!(rejects(|c| c.learning_rate = f32::NAN));
+        assert!(rejects(|c| c.learning_rate = MAX_LEARNING_RATE + 1.0));
         assert!(rejects(|c| c.fight_damage = c.max_health + 1));
         assert!(rejects(|c| c.fight_smartness_loss = -1.0));
         assert!(rejects(|c| c.fight_smartness_loss = MAX_SMARTNESS + 1.0));

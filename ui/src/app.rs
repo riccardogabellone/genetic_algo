@@ -261,6 +261,16 @@ impl App {
                 ui.add(Slider::new(&mut rules.brain_mutation_step, 0..=64).text("Mutation size"))
                     .on_hover_text("Largest change to one weight, in steps of 1/16."),
             );
+            track(
+                ui.checkbox(&mut rules.learning, "Learn during life")
+                    .on_hover_text("Each brain also learns what its actions cause. Learned weights die with the individual; children inherit only the genome."),
+            );
+            ui.add_enabled_ui(rules.learning, |ui| {
+                track(
+                    ui.add(Slider::new(&mut rules.learning_rate, 0.0..=2.0).text("Learning rate"))
+                        .on_hover_text("How far each lesson moves a brain's weights."),
+                );
+            });
         });
 
         ui.add_space(4.0);
@@ -529,6 +539,8 @@ mod tests {
             rules.fight_smartness_loss = loss;
             rules.leaders = fights > 0.0;
             rules.brains = fights > 0.0;
+            rules.learning = fights > 0.0;
+            rules.learning_rate = rate * 2.0;
             rules.brain_mutation_rate = rate;
             rules.brain_mutation_step = (step as u8).min(64);
             app.controller.apply_rules();
