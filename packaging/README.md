@@ -16,6 +16,8 @@ cargo packager --release --formats deb,appimage   # Linux; nsis,wix on Windows; 
 ```
 The packages land in `target/packages/`.
 
+The executable is `GeneticAlgo` (`GeneticAlgo.exe` on Windows), set by `[[bin]]` in `ui/Cargo.toml`: Cargo allows no spaces in it, so the display name "Genetic Algo" comes from the packages and `ui/src/identity.rs`. The package files are named after it too, such as `GeneticAlgo_<version>_amd64.deb`.
+
 ## Releasing
 1. Bump `version` in `ui/Cargo.toml`, merge it to `main`.
 2. Tag the merge commit `v<version>` and push the tag. The release workflow checks that the two match.
