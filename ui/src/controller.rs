@@ -43,6 +43,10 @@ pub struct Rules {
     pub max_terms: u32,
     pub memory: usize,
     pub term_judgement: TermJudgement,
+    pub brains: bool,
+    pub brains_inherited: bool,
+    pub brain_mutation_rate: f32,
+    pub brain_mutation_step: u8,
     pub stop_at_target: bool,
     pub target: f32,
 }
@@ -71,6 +75,10 @@ impl Default for Rules {
             max_terms: defaults.max_terms,
             memory: defaults.max_memory,
             term_judgement: defaults.term_judgement,
+            brains: defaults.brains_enabled,
+            brains_inherited: defaults.brains_inherited,
+            brain_mutation_rate: defaults.brain_mutation_rate,
+            brain_mutation_step: defaults.brain_mutation_step,
             stop_at_target: true,
             target: defaults.target_smartness,
         }
@@ -104,6 +112,10 @@ impl Rules {
         config.max_terms = self.max_terms;
         config.max_memory = self.memory;
         config.term_judgement = self.term_judgement;
+        config.brains_enabled = self.brains;
+        config.brains_inherited = self.brains_inherited;
+        config.brain_mutation_rate = self.brain_mutation_rate;
+        config.brain_mutation_step = self.brain_mutation_step;
         // The scale's maximum is unreachable in practice, because mutation keeps some
         // individuals below it. That is how "never stop for the target" is expressed.
         config.target_smartness = if self.stop_at_target {
@@ -123,16 +135,18 @@ pub enum Preset {
     TwoStableOutcomes,
     Fighting,
     Leaders,
+    Brains,
 }
 
 impl Preset {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Default,
         Self::VisionAndCost,
         Self::AllRules,
         Self::TwoStableOutcomes,
         Self::Fighting,
         Self::Leaders,
+        Self::Brains,
     ];
 
     pub fn label(self) -> &'static str {
@@ -143,6 +157,7 @@ impl Preset {
             Self::TwoStableOutcomes => "Two outcomes",
             Self::Fighting => "Fighting",
             Self::Leaders => "Leaders",
+            Self::Brains => "Brains",
         }
     }
 
@@ -153,6 +168,9 @@ impl Preset {
             Self::AllRules => "Adds evolving speed. Fast, but fragile on small maps.",
             Self::Fighting => "Fights over food, and a few for no reason.",
             Self::Leaders => "Elected leaders in a world with fights, so their aggression matters.",
+            Self::Brains => {
+                "Evolved neural networks choose actions instead of the hand-written rules."
+            }
             Self::TwoStableOutcomes => {
                 "Vision 5, smartness cost 8. Stays dumb from a normal start; \
                  stays smart with \"Start smart\" enabled."
@@ -174,6 +192,10 @@ impl Preset {
                 vision: 5,
                 max_speed: 4,
                 speed_cost: 1.0,
+                ..base
+            },
+            Self::Brains => Rules {
+                brains: true,
                 ..base
             },
             Self::Leaders => Rules {
@@ -563,6 +585,21 @@ mod tests {
         assert_eq!(config.max_terms, 3);
         assert_eq!(config.max_memory, 7);
         assert_eq!(config.term_judgement, TermJudgement::Personal);
+    }
+
+    #[test]
+    fn brain_edits_apply_to_the_running_simulation() {
+        let mut controller = controller();
+        controller.rules.brains = true;
+        controller.rules.brains_inherited = false;
+        controller.rules.brain_mutation_rate = 0.3;
+        controller.rules.brain_mutation_step = 20;
+        controller.apply_rules();
+        let config = controller.simulation().config();
+        assert!(config.brains_enabled);
+        assert!(!config.brains_inherited);
+        assert_eq!(config.brain_mutation_rate, 0.3);
+        assert_eq!(config.brain_mutation_step, 20);
     }
 
     #[test]

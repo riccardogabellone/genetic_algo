@@ -32,7 +32,7 @@ pub struct Simulation {
 fn upkeep_due(individual: &Individual, moved: bool, config: &Config, rng: &mut StdRng) -> u32 {
     let brain = individual.smartness / MAX_SMARTNESS * config.smartness_upkeep;
     let legs = if moved {
-        (individual.speed - 1) as f32 * config.speed_upkeep
+        f32::from(individual.speed - 1) * config.speed_upkeep
     } else {
         0.0
     };

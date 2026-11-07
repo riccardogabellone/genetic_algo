@@ -3,6 +3,7 @@
 use rand::RngExt;
 
 use crate::{
+    brain::{Brain, founder_brain, inherited_brain},
     config::{Config, MAX_SMARTNESS},
     leadership::Civics,
     sampling::triangular,
@@ -48,9 +49,12 @@ pub struct Individual {
     pub health: u32,
     pub age: u32,
     pub lifespan: u32,
-    pub speed: usize,
+    /// Within `1..=Config::max_speed`, which is at most `MAX_RADIUS`.
+    pub speed: u8,
     pub mating_cooldown: u32,
     pub civics: Civics,
+    /// Present only when brains are on.
+    pub brain: Option<Box<Brain>>,
 }
 
 impl Individual {
@@ -66,9 +70,10 @@ impl Individual {
             health: config.founder_health.sample(rng) as u32,
             age: 0,
             lifespan: rng.random_range(config.min_lifespan..=config.max_lifespan),
-            speed: config.initial_speed,
+            speed: u8::try_from(config.initial_speed).expect("validated: at most MAX_RADIUS"),
             mating_cooldown: 0,
             civics: Civics::founder(config, rng),
+            brain: founder_brain(config, rng),
         }
     }
 
@@ -110,6 +115,7 @@ impl Individual {
             speed: inherit_speed(parent_a.speed, parent_b.speed, config, rng),
             mating_cooldown: 0,
             civics: Civics::inherited(parent_a, parent_b, config, rng),
+            brain: inherited_brain(parent_a, parent_b, config, rng),
         }
     }
 
@@ -135,16 +141,17 @@ impl Individual {
 }
 
 /// Speed is a whole number, so it comes from one parent and mutates by a single step.
-fn inherit_speed(speed_a: usize, speed_b: usize, config: &Config, rng: &mut impl RngExt) -> usize {
+fn inherit_speed(speed_a: u8, speed_b: u8, config: &Config, rng: &mut impl RngExt) -> u8 {
     let inherited = if rng.random() { speed_a } else { speed_b };
     let mutated = if rng.random::<f32>() >= config.mutation_rate {
         inherited
     } else if rng.random() {
-        inherited + 1
+        inherited.saturating_add(1)
     } else {
         inherited.saturating_sub(1)
     };
-    mutated.clamp(1, config.max_speed)
+    let max_speed = u8::try_from(config.max_speed).expect("validated: at most MAX_RADIUS");
+    mutated.clamp(1, max_speed)
 }
 
 pub(crate) fn inherit(value_a: f32, value_b: f32, rng: &mut impl RngExt) -> f32 {
@@ -312,7 +319,7 @@ mod tests {
         for id in 0..1_000 {
             let child = Individual::offspring(id, &slow, &fast, &config, &mut rng);
             assert!((1..=4).contains(&child.speed));
-            seen[child.speed] = true;
+            seen[usize::from(child.speed)] = true;
         }
         assert_eq!(seen, [false, true, true, true, true]);
     }

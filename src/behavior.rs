@@ -3,6 +3,7 @@
 use rand::{RngExt, seq::IndexedRandom};
 
 use crate::{
+    brain::{Brain, Features, best_option},
     config::{Config, MAX_SMARTNESS},
     individual::Individual,
     leadership::{Policy, Stance},
@@ -42,7 +43,7 @@ pub fn decide(
     rng: &mut impl RngExt,
 ) -> Action {
     let stance = Stance::for_turn(individual, leader_policy, config, rng);
-    let reachable = world.ring(position, individual.speed);
+    let reachable = world.ring(position, usize::from(individual.speed));
     if let Some(action) = try_to_mate(individual, position, &reachable, world, config, rng) {
         return action;
     }
@@ -50,7 +51,12 @@ pub fn decide(
         return action;
     }
     if thinks_this_turn(individual, config, rng) {
-        deliberate(individual, stance, position, &reachable, world, config, rng)
+        match individual.brain.as_deref() {
+            Some(brain) if config.brains_enabled => use_brain(
+                individual, brain, stance, position, &reachable, world, config, rng,
+            ),
+            _ => deliberate(individual, stance, position, &reachable, world, config, rng),
+        }
     } else {
         act_at_random(individual, stance, &reachable, world, config, rng)
     }
@@ -144,7 +150,9 @@ fn eat(
             Cell::Individual(other) => {
                 other.health > 0
                     && other.health < Stance::own(other, config).hungry_below
-                    && world.ring(*position, other.speed).contains(&food)
+                    && world
+                        .ring(*position, usize::from(other.speed))
+                        .contains(&food)
             }
             _ => false,
         })
@@ -230,6 +238,60 @@ fn step_toward_food(
 }
 
 /// Picks any reachable cell and suffers the consequences.
+/// Lets an evolved brain pick among staying put and every reachable cell. The cell then
+/// decides what happens, exactly as for any other individual: a brain can choose food,
+/// a hazard, or, when unprovoked fights are allowed, another individual to attack.
+#[allow(clippy::too_many_arguments)]
+fn use_brain(
+    individual: &Individual,
+    brain: &Brain,
+    stance: Stance,
+    position: Position,
+    reachable: &[Position],
+    world: &World,
+    config: &Config,
+    rng: &mut impl RngExt,
+) -> Action {
+    let hunger = 1.0 - individual.health as f32 / config.max_health as f32;
+    let options: Vec<Option<Position>> = std::iter::once(None)
+        .chain(reachable.iter().copied().map(Some))
+        .collect();
+    let scores: Vec<f32> = options
+        .iter()
+        .map(|option| brain.score(&features(*option, position, hunger, world)))
+        .collect();
+    let Some(Some(target)) = best_option(&scores, rng).map(|index| options[index]) else {
+        return Action::Stay;
+    };
+    match world.get(target) {
+        Cell::Empty => Action::Move(target),
+        Cell::Food => eat(individual, stance, target, reachable, world, config, rng),
+        Cell::Hazard => Action::TouchHazard,
+        Cell::Individual(other) if config.random_fight_chance > 0.0 && other.health > 0 => {
+            Action::Attack { victim: target }
+        }
+        Cell::Wall | Cell::Individual(_) => Action::Stay,
+    }
+}
+
+/// What a brain sees of one option: the cell itself, or its own cell when staying.
+fn features(option: Option<Position>, position: Position, hunger: f32, world: &World) -> Features {
+    let around = option.unwrap_or(position);
+    let share = |wanted: &Cell| world.count_around(around, wanted) as f32 / 8.0;
+    let cell = option.map(|cell| world.get(cell));
+    Features {
+        empty: matches!(cell, Some(Cell::Empty)),
+        food: matches!(cell, Some(Cell::Food)),
+        wall: matches!(cell, Some(Cell::Wall)),
+        hazard: matches!(cell, Some(Cell::Hazard)),
+        individual: matches!(cell, Some(Cell::Individual(_))),
+        stay: option.is_none(),
+        hunger,
+        food_nearby: share(&Cell::Food),
+        hazards_nearby: share(&Cell::Hazard),
+    }
+}
+
 fn act_at_random(
     individual: &Individual,
     stance: Stance,

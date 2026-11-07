@@ -97,6 +97,17 @@ pub struct Config {
     /// Largest policy mutation, as a share of each scale. Happens at `mutation_rate`.
     pub policy_mutation_step: f32,
 
+    // Evolved brains
+    /// When an individual thinks, an inherited neural network chooses instead of the
+    /// hand-written rules. Off by default.
+    pub brains_enabled: bool,
+    /// Experimental control: `false` gives every child a fresh random brain.
+    pub brains_inherited: bool,
+    /// Chance that each weight mutates in a child.
+    pub brain_mutation_rate: f32,
+    /// Largest mutation of one weight, in steps of 1/16.
+    pub brain_mutation_step: u8,
+
     // Life cycle
     pub min_lifespan: u32,
     pub max_lifespan: u32,
@@ -190,6 +201,11 @@ impl Config {
             },
             policy_mutation_step: 0.1,
 
+            brains_enabled: false,
+            brains_inherited: true,
+            brain_mutation_rate: 0.05,
+            brain_mutation_step: 8,
+
             min_lifespan: 50,
             max_lifespan: 100,
             maturity_age: 5,
@@ -206,6 +222,14 @@ impl Config {
         self.validate_traits()?;
         self.validate_fighting()?;
         self.validate_leaders()?;
+        require(
+            (0.0..=1.0).contains(&self.brain_mutation_rate),
+            "brain_mutation_rate must be within 0..=1",
+        )?;
+        require(
+            self.brain_mutation_step <= 127,
+            "brain_mutation_step must be at most 127",
+        )?;
         self.validate_life_cycle()
     }
 
@@ -467,6 +491,9 @@ mod tests {
         assert!(rejects(|c| c.founder_aggression.max = MAX_AGGRESSION + 1.0));
         assert!(rejects(|c| c.founder_appetite.max = 1.5));
         assert!(rejects(|c| c.policy_mutation_step = -0.1));
+        assert!(rejects(|c| c.brain_mutation_rate = 1.5));
+        assert!(rejects(|c| c.brain_mutation_rate = f32::NAN));
+        assert!(rejects(|c| c.brain_mutation_step = 128));
         assert!(rejects(|c| c.fight_damage = c.max_health + 1));
         assert!(rejects(|c| c.fight_smartness_loss = -1.0));
         assert!(rejects(|c| c.fight_smartness_loss = MAX_SMARTNESS + 1.0));

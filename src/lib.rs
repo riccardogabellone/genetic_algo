@@ -5,6 +5,7 @@
 //! [`simulation::Simulation`]; `render` holds the terminal, chart and GIF front ends.
 
 pub mod behavior;
+pub mod brain;
 pub mod config;
 pub mod individual;
 pub mod leadership;

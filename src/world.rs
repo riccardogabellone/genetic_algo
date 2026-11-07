@@ -153,6 +153,22 @@ impl World {
         positions
     }
 
+    /// How many of the eight cells around `center` hold `wanted`. Allocation-free, because
+    /// brains call it for every option they score.
+    pub fn count_around(&self, center: Position, wanted: &Cell) -> usize {
+        let span =
+            |value: usize, limit: usize| value.saturating_sub(1)..=(value + 1).min(limit - 1);
+        let mut count = 0;
+        for y in span(center.y, self.height) {
+            for x in span(center.x, self.width) {
+                if (x, y) != (center.x, center.y) && self.get(Position { x, y }) == wanted {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
     /// Puts `cell` on up to `amount` random empty cells and returns how many it placed.
     /// Never retries blindly, so a full grid cannot hang it.
     pub fn scatter(&mut self, cell: &Cell, amount: usize, rng: &mut impl RngExt) -> usize {
@@ -178,6 +194,25 @@ impl World {
 mod tests {
     use super::*;
     use rand::{SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn count_around_matches_the_ring() {
+        let mut world = World::new(4, 3);
+        let mut rng = StdRng::seed_from_u64(9);
+        world.scatter(&Cell::Food, 6, &mut rng);
+        for (position, _) in world.iter() {
+            let by_ring = world
+                .ring(position, 1)
+                .iter()
+                .filter(|cell| *world.get(**cell) == Cell::Food)
+                .count();
+            assert_eq!(
+                world.count_around(position, &Cell::Food),
+                by_ring,
+                "{position:?}"
+            );
+        }
+    }
 
     #[test]
     fn ring_has_eight_r_cells_in_open_space() {

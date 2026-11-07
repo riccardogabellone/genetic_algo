@@ -5,6 +5,7 @@ mod common;
 use common::{CENTER, adult, only_individual, scenario_config, simulation_with};
 use genetic_algo::{
     behavior::vision_radius,
+    brain::{Brain, HIDDEN, INPUTS, WEIGHTS},
     config::Config,
     individual::{
         Gender::{Female, Male},
@@ -667,6 +668,161 @@ fn contests_can_be_switched_off() {
     simulation.step();
     assert_eq!(simulation.latest().events.fights, 0);
     assert_eq!(simulation.latest().events.meals, 1);
+}
+
+// ---------- Evolved brains ----------
+
+/// A brain whose only path runs from one input through one hidden unit to the score.
+fn brain_that_loves(input: usize) -> Brain {
+    let mut weights = [0_i8; WEIGHTS];
+    weights[input] = 32;
+    weights[INPUTS * HIDDEN + HIDDEN] = 32;
+    Brain::from_weights(weights)
+}
+
+const FOOD_INPUT: usize = 1;
+const HAZARD_INPUT: usize = 3;
+const INDIVIDUAL_INPUT: usize = 4;
+
+fn with_brain(mut individual: Individual, brain: Brain) -> Individual {
+    individual.brain = Some(Box::new(brain));
+    individual
+}
+
+fn brain_rules() -> Config {
+    Config {
+        brains_enabled: true,
+        ..scenario_config()
+    }
+}
+
+#[test]
+fn a_brain_chooses_what_its_weights_favour() {
+    for seed in 0..SEEDS {
+        let mut sated = adult(1, Male, 100.0);
+        sated.health = 90;
+        let mut world = world_with_center(with_brain(sated, brain_that_loves(FOOD_INPUT)));
+        world.set(RIGHT, Cell::Food);
+        let mut simulation = simulation_with(brain_rules(), world, seed);
+        simulation.step();
+        // The rules would not eat when this full; this brain always does.
+        assert_eq!(simulation.latest().events.meals, 1, "seed {seed}");
+        assert_eq!(simulation.latest().events.overfed, 1, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_brain_can_walk_into_a_hazard_the_rules_would_avoid() {
+    for seed in 0..SEEDS {
+        let mut world = world_with_center(with_brain(
+            adult(1, Male, 100.0),
+            brain_that_loves(HAZARD_INPUT),
+        ));
+        world.set(RIGHT, Cell::Hazard);
+        let mut simulation = simulation_with(brain_rules(), world, seed);
+        simulation.step();
+        let (_, individual) = only_individual(&simulation);
+        assert_eq!(individual.health, 50 - 15 - 1, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_brain_attacks_only_when_unprovoked_fights_are_allowed() {
+    // Both are at smartness 100, so the unprovoked-fight rule itself never fires: any
+    // fight is the brain's choice. The victim is walled in, so it cannot walk away first.
+    for (random_fight_chance, expected) in [(0.0, 0), (0.001, 1)] {
+        let config = Config {
+            random_fight_chance,
+            ..brain_rules()
+        };
+        for seed in 0..SEEDS {
+            let mut world = World::new(5, 5);
+            for position in world.ring(RIGHT, 1) {
+                world.set(position, Cell::Wall);
+            }
+            let attacker = with_brain(adult(1, Male, 100.0), brain_that_loves(INDIVIDUAL_INPUT));
+            world.place_individual(CENTER, attacker);
+            world.place_individual(RIGHT, adult(2, Male, 100.0));
+            let mut simulation = simulation_with(config.clone(), world, seed);
+            simulation.step();
+            assert_eq!(simulation.latest().events.fights, expected, "seed {seed}");
+        }
+    }
+}
+
+#[test]
+fn without_thinking_the_brain_is_not_used() {
+    // A brain that loves hazards would touch the one beside it on every turn. Acting at
+    // random instead, an individual touches it only on some turns.
+    let mut always_hurt = 0;
+    for seed in 0..SEEDS {
+        let thoughtless = with_brain(adult(1, Male, 0.0), brain_that_loves(HAZARD_INPUT));
+        let mut world = world_with_center(thoughtless);
+        world.set(RIGHT, Cell::Hazard);
+        let mut simulation = simulation_with(brain_rules(), world, seed);
+        for _ in 0..3 {
+            simulation.step();
+        }
+        let hurt_every_turn = 50 - 3 * (15 + 1);
+        if simulation
+            .world()
+            .individuals()
+            .all(|(_, i)| i.health == hurt_every_turn)
+        {
+            always_hurt += 1;
+        }
+    }
+    assert!(always_hurt < SEEDS / 4, "{always_hurt} of {SEEDS}");
+}
+
+#[test]
+fn with_the_switch_off_a_brain_is_ignored() {
+    let config = scenario_config();
+    for seed in 0..SEEDS {
+        let mut world = world_with_center(with_brain(
+            adult(1, Male, 100.0),
+            brain_that_loves(HAZARD_INPUT),
+        ));
+        world.set(RIGHT, Cell::Hazard);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        simulation.step();
+        assert_eq!(
+            only_individual(&simulation).1.health,
+            50 - 1,
+            "the rules avoid hazards"
+        );
+    }
+}
+
+#[test]
+fn children_inherit_brains_and_the_control_draws_fresh_ones() {
+    for inherited in [true, false] {
+        let config = Config {
+            brains_inherited: inherited,
+            brain_mutation_rate: 0.0,
+            ..brain_rules()
+        };
+        let parent_brain = brain_that_loves(FOOD_INPUT);
+        let mut world = World::new(5, 5);
+        world.place_individual(
+            CENTER,
+            with_brain(adult(1, Male, 50.0), parent_brain.clone()),
+        );
+        world.place_individual(
+            RIGHT,
+            with_brain(adult(2, Female, 50.0), parent_brain.clone()),
+        );
+        let mut simulation = simulation_with(config, world, 1);
+        simulation.step();
+        let baby = simulation
+            .world()
+            .individuals()
+            .find(|(_, individual)| individual.age == 0)
+            .map(|(_, individual)| individual.clone())
+            .expect("a birth");
+        let brain = baby.brain.expect("brains are on");
+        assert_eq!(*brain == parent_brain, inherited);
+    }
 }
 
 // ---------- Reproduction ----------
