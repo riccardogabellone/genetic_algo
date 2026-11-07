@@ -18,15 +18,16 @@ Chosen on 2026-11-07 from three mocked directions (A "Lab bench", B "Focus canva
 
 Why not B: it hides the rules while a run plays. Why not C: the most code (`egui_tiles`, saved layouts) for the smallest map. C's resizable panes stay an option if fixed panels prove limiting.
 
-## Theme (planned)
+## Theme (done)
 - **Colour roles,** from fastframe-theme: `window`, `panel`, `surface`, `surface_hover`, `surface_active`, `outline`, `text`, `secondary`, `dim`, `accent`, `accent_hover`, `on_accent`, `danger`, `warning`, plus chart series colours. One token struct feeds `egui::Visuals`; nothing else hard-codes a colour.
 - **Mapping onto egui,** after ZapFast's `theme.rs`: widget states are `surface` / `surface_hover` / `surface_active` with no border; non-interactive frames get a 1 px `outline`; selection is `accent` at 35%; corner radius 8 for windows and menus, 6 for widgets; `button_padding` 12x6, `interact_size` height 28.
 - **Light and dark,** following the system (`ThemePreference::System`), with a manual toggle. A palette can be derived from background, text and accent with fastframe's recipe: panel = mix(bg, fg, 3%), surface 8%, hover 12%, active 18%, outline 20%, secondary 70%, dim 50%.
-- **Identity colours** come from the logo: navy `#00163D`, then teal `#00D1E0`, green `#83E088`, yellow `#FFD21F`, orange `#FE9A0D`.
+- **Identity colours** come from the logo: navy `#00163D`, then teal `#00D1E0`, green `#83E088`, yellow `#FFD21F`, orange `#FE9A0D`. The dark theme derives from a navy background, the light one from a near-white; both use the logo's teal as the accent and its gradient for smartness, darkened in the light theme where it would wash out.
+- **Contrast is tested,** in `theme.rs`: text at least 7:1 and secondary text 4.5:1 on every surface, accents and the smartness colours at least 3:1, in both themes. The light theme's secondary text is darker than the recipe's 70%, which fell short on pressed widgets.
 
-## Typography (planned)
-- **Inter** (OFL-1.1, ship its licence) with tabular figures frozen into the font, so counters that change every frame do not jitter. egui cannot select OpenType features, hence the frozen copy (`pyftfeatfreeze -f tnum`). Weights from the one variable file via `VariationCoords`.
-- **Text rendering** matched to the desktop, copied from fastframe-text: egui's dark-mode coverage curve draws text 11-18% heavier than GTK; linear coverage comes within 2%. Re-apply after every `set_visuals`, which resets these fields.
+## Typography (done)
+- **Inter** 4.1 (OFL-1.1, licence in `assets/fonts/`) with tabular figures frozen into the font, so counters that change every frame do not jitter. egui cannot select OpenType features, hence the frozen copy, rebuilt from the upstream release (`assets/fonts/README.md`). Regular (400) for text, semibold (600) for headings and stat values, both from the one variable file via `VariationCoords`; egui's own fonts stay behind it as fallbacks.
+- **Text rendering** matched to the desktop, after fastframe-text: on Linux, egui's dark-mode coverage curve draws text 11-18% heavier than GTK, and linear coverage comes within 2%; macOS renders unhinted; Windows keeps egui's defaults. No runtime detection of the desktop's settings (fastframe reads them over D-Bus), only these per-platform defaults. The adjustment is part of building the visuals, so replacing the visuals keeps it.
 
 ## Icons
 - **App icon (done):** generated from `assets/logo/`. The window icon is set in `identity.rs`, except on macOS, where the bundle's icon must win in the Dock.

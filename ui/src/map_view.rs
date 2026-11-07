@@ -1,12 +1,15 @@
-//! Draws the world. Colors come from the shared palette; shapes distinguish each kind of
-//! cell, so identity never relies on color alone.
+//! Draws the world. Cell colors come from the core's shared palette, so the map matches the
+//! terminal and GIF output; shapes distinguish each kind of cell, so identity never relies
+//! on color alone. The map stays dark in both themes.
 
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Shape, Stroke, Vec2};
+
+use crate::theme;
 use genetic_algo::{
     config::Config,
     individual::{Gender, Individual},
     leadership::Civics,
-    render::palette::{self, Rgb, appearance},
+    render::palette::{Rgb, appearance},
     world::{Cell, Position, World},
 };
 
@@ -64,7 +67,7 @@ pub fn show(ui: &mut egui::Ui, world: &World, leader: Option<u64>) {
         layout.origin,
         Vec2::new(world.width() as f32, world.height() as f32) * layout.cell_size,
     );
-    painter.rect_filled(map_rect, 0.0, color(palette::BACKGROUND));
+    painter.rect_filled(map_rect, 0.0, theme::palette(ui.ctx()).map_background);
     for (position, cell) in world.iter() {
         let rect = layout.cell_rect(position);
         draw_cell(&painter, rect, cell);
@@ -185,7 +188,7 @@ pub fn legend(ui: &mut egui::Ui) {
     let sample = |ui: &mut egui::Ui, cell: &Cell, label: &str| {
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
         ui.painter()
-            .rect_filled(rect, 2.0, color(palette::BACKGROUND));
+            .rect_filled(rect, 2.0, theme::palette(ui.ctx()).map_background);
         draw_cell(ui.painter(), rect, cell);
         ui.label(label);
         ui.add_space(8.0);
@@ -217,7 +220,7 @@ pub fn legend(ui: &mut egui::Ui) {
         sample(ui, &Cell::Hazard, "Hazard");
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
         ui.painter()
-            .rect_filled(rect, 2.0, color(palette::BACKGROUND));
+            .rect_filled(rect, 2.0, theme::palette(ui.ctx()).map_background);
         draw_leader_ring(ui.painter(), rect.shrink(2.0));
         ui.label("Leader");
     });

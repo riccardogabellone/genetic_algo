@@ -1,14 +1,13 @@
 //! Live charts. Each measure has its own panel and axis, all sharing the tick axis.
 
-use eframe::egui::{self, Color32, Id};
+use eframe::egui::{self, Id};
 use egui_plot::{Corner, HLine, Legend, Line, LineStyle, Plot, PlotPoints};
 use genetic_algo::{config::MAX_SMARTNESS, stats::TickStats};
 
+use crate::theme;
+
 /// A chart never needs more points than this; long runs are thinned to it.
 const MAX_POINTS: usize = 1_200;
-const SERIES: Color32 = Color32::from_rgb(196, 134, 30);
-const SERIES_RANGE: Color32 = Color32::from_rgb(138, 110, 58);
-const TARGET: Color32 = Color32::from_rgb(190, 192, 198);
 const PLOT_GROUP: &str = "tick_axis";
 
 /// Evenly spaced entries that always include the latest one, so the chart ends at "now".
@@ -56,6 +55,9 @@ pub struct Panels {
 }
 
 pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panels: Panels) {
+    let palette = theme::palette(ui.ctx());
+    let (series_color, range_color, target_color) =
+        (palette.accent, palette.secondary, palette.dim);
     let points = thin(history);
     let count = 2.0 + f32::from(u8::from(panels.speed)) + f32::from(u8::from(panels.policy));
     let headings = count * 26.0;
@@ -68,18 +70,18 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
         .show(ui, |plot| {
             plot.line(
                 series("Max", &points, |s| s.smartness.map(|v| f64::from(v.max)))
-                    .color(SERIES_RANGE)
+                    .color(range_color)
                     .width(1.0),
             );
             plot.line(
                 series("Min", &points, |s| s.smartness.map(|v| f64::from(v.min)))
-                    .color(SERIES_RANGE)
+                    .color(range_color)
                     .width(1.0)
                     .style(LineStyle::dotted_dense()),
             );
             plot.line(
                 series("Mean", &points, |s| s.smartness.map(|v| f64::from(v.mean)))
-                    .color(SERIES)
+                    .color(series_color)
                     .width(2.0),
             );
             if panels.innate {
@@ -87,14 +89,14 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
                     series("Innate mean", &points, |s| {
                         s.smartness.map(|v| f64::from(v.innate_mean))
                     })
-                    .color(TARGET)
+                    .color(target_color)
                     .width(1.5),
                 );
             }
             if let Some(target) = target {
                 plot.hline(
                     HLine::new("Target", f64::from(target))
-                        .color(TARGET)
+                        .color(target_color)
                         .style(LineStyle::dashed_loose()),
                 );
             }
@@ -104,7 +106,7 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
     base_plot("population_plot", height).show(ui, |plot| {
         plot.line(
             series("Population", &points, |s| Some(s.population as f64))
-                .color(SERIES)
+                .color(series_color)
                 .width(2.0),
         );
     });
@@ -119,14 +121,14 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
                     series("Aggression", &points, |s| {
                         s.mean_policy.map(|policy| f64::from(policy.aggression))
                     })
-                    .color(SERIES)
+                    .color(series_color)
                     .width(2.0),
                 );
                 plot.line(
                     series("Appetite", &points, |s| {
                         s.mean_policy.map(|policy| f64::from(policy.appetite))
                     })
-                    .color(TARGET)
+                    .color(target_color)
                     .width(2.0),
                 );
             });
@@ -139,7 +141,7 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
             .show(ui, |plot| {
                 plot.line(
                     series("Mean speed", &points, |s| s.mean_speed.map(f64::from))
-                        .color(SERIES)
+                        .color(series_color)
                         .width(2.0),
                 );
             });
