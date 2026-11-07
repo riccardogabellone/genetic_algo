@@ -3,7 +3,7 @@
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
 use crate::{
-    behavior::{Action, decide},
+    behavior::{Action, Decision, decide},
     config::{Config, ConfigError, MAX_SMARTNESS},
     individual::{DeathCause, Gender, Individual},
     leadership::Leadership,
@@ -180,7 +180,7 @@ impl Simulation {
             self.leadership.record_death(individual.id);
             return;
         }
-        let action = decide(
+        let Decision { action, lesson } = decide(
             &individual,
             position,
             &self.world,
@@ -236,6 +236,19 @@ impl Simulation {
             DeathCause::Starved if touched_hazard => DeathCause::Hazard,
             other => other,
         });
+        if cause.is_none()
+            && let (Some(lesson), Some(brain)) = (lesson, individual.brain.as_mut())
+        {
+            // Only what the choice caused. The turn's fixed costs are the same whatever is
+            // chosen, so they carry no information about the choice.
+            let gain = if ate { config.food_gain as f32 } else { 0.0 };
+            let harm = if touched_hazard {
+                config.hazard_damage as f32
+            } else {
+                0.0
+            };
+            brain.learn(&lesson, (gain - harm) / config.max_health as f32, config);
+        }
         match cause {
             Some(cause) => {
                 events.record_death(cause);
@@ -268,12 +281,11 @@ impl Simulation {
         };
         other_parent.health -= mating_cost;
         other_parent.mating_cooldown = cooldown;
-        let other_parent = other_parent.clone();
-
         parent.health -= mating_cost;
         parent.mating_cooldown = cooldown;
-
-        let baby = Individual::offspring(id, parent, &other_parent, &self.config, &mut self.rng);
+        // Borrowed, not cloned: a clone would copy the partner's learned weights and
+        // memories at every birth.
+        let baby = Individual::offspring(id, parent, other_parent, &self.config, &mut self.rng);
         self.world.place_individual(nursery, baby);
     }
 

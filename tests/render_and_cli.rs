@@ -169,6 +169,8 @@ fn invalid_input_fails_with_a_message() {
         &["--random-brains"],
         &["--brains", "--brain-mutation-rate", "2"],
         &["--brains", "--brain-mutation-step", "128"],
+        &["--learning"],
+        &["--brains", "--learning", "--learning-rate", "-1"],
         &["--chart", "not_a_png.txt"],
         &["--chart", "no_extension"],
         &["--chart", "/tmp/"],

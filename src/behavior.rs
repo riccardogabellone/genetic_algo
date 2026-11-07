@@ -33,6 +33,23 @@ pub enum Action {
     Stay,
 }
 
+/// A turn's action, plus, for a learning brain, the option it acted on, so it can learn
+/// what that caused once the turn is over.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Decision {
+    pub action: Action,
+    pub lesson: Option<Features>,
+}
+
+impl From<Action> for Decision {
+    fn from(action: Action) -> Self {
+        Self {
+            action,
+            lesson: None,
+        }
+    }
+}
+
 /// Decides the turn of `individual`, which must already be off the grid at `position`.
 pub fn decide(
     individual: &Individual,
@@ -41,25 +58,41 @@ pub fn decide(
     leader_policy: Option<Policy>,
     config: &Config,
     rng: &mut impl RngExt,
-) -> Action {
+) -> Decision {
     let stance = Stance::for_turn(individual, leader_policy, config, rng);
     let reachable = world.ring(position, usize::from(individual.speed));
     if let Some(action) = try_to_mate(individual, position, &reachable, world, config, rng) {
-        return action;
+        return action.into();
     }
     if let Some(action) = try_random_attack(individual, stance, &reachable, world, config, rng) {
-        return action;
+        return action.into();
     }
-    if thinks_this_turn(individual, config, rng) {
-        match individual.brain.as_deref() {
-            Some(brain) if config.brains_enabled => use_brain(
-                individual, brain, stance, position, &reachable, world, config, rng,
-            ),
-            _ => deliberate(individual, stance, position, &reachable, world, config, rng),
-        }
-    } else {
-        act_at_random(individual, stance, &reachable, world, config, rng)
-    }
+    let brain = individual
+        .brain
+        .as_deref()
+        .filter(|_| config.brains_enabled);
+    let thinks = thinks_this_turn(individual, config, rng);
+    let (action, target) = match (thinks, brain) {
+        (true, Some(brain)) => use_brain(
+            individual, brain, stance, position, &reachable, world, config, rng,
+        ),
+        (true, None) => (
+            deliberate(individual, stance, position, &reachable, world, config, rng),
+            None,
+        ),
+        (false, _) => act_at_random(individual, stance, &reachable, world, config, rng),
+    };
+    // Any cell acted on teaches a learning brain, whether it chose the cell or acted at
+    // random. Deliberate turns only happen without a brain, so they never teach one.
+    let lesson = brain
+        .filter(|_| config.learning_enabled)
+        .and(target)
+        .map(|option| features(option, position, hunger(individual, config), world));
+    Decision { action, lesson }
+}
+
+fn hunger(individual: &Individual, config: &Config) -> f32 {
+    1.0 - individual.health as f32 / config.max_health as f32
 }
 
 /// Top priority for everyone, as long as a partner and room for the newborn exist.
@@ -241,6 +274,7 @@ fn step_toward_food(
 /// Lets an evolved brain pick among staying put and every reachable cell. The cell then
 /// decides what happens, exactly as for any other individual: a brain can choose food,
 /// a hazard, or, when unprovoked fights are allowed, another individual to attack.
+/// Returns the action and the option picked: `Some(None)` means staying put.
 #[allow(clippy::too_many_arguments)]
 fn use_brain(
     individual: &Individual,
@@ -251,8 +285,8 @@ fn use_brain(
     world: &World,
     config: &Config,
     rng: &mut impl RngExt,
-) -> Action {
-    let hunger = 1.0 - individual.health as f32 / config.max_health as f32;
+) -> (Action, Option<Option<Position>>) {
+    let hunger = hunger(individual, config);
     let options: Vec<Option<Position>> = std::iter::once(None)
         .chain(reachable.iter().copied().map(Some))
         .collect();
@@ -260,18 +294,20 @@ fn use_brain(
         .iter()
         .map(|option| brain.score(&features(*option, position, hunger, world)))
         .collect();
-    let Some(Some(target)) = best_option(&scores, rng).map(|index| options[index]) else {
-        return Action::Stay;
+    let picked = best_option(&scores, rng).map(|index| options[index]);
+    let action = match picked.flatten() {
+        None => Action::Stay,
+        Some(target) => match world.get(target) {
+            Cell::Empty => Action::Move(target),
+            Cell::Food => eat(individual, stance, target, reachable, world, config, rng),
+            Cell::Hazard => Action::TouchHazard,
+            Cell::Individual(other) if config.random_fight_chance > 0.0 && other.health > 0 => {
+                Action::Attack { victim: target }
+            }
+            Cell::Wall | Cell::Individual(_) => Action::Stay,
+        },
     };
-    match world.get(target) {
-        Cell::Empty => Action::Move(target),
-        Cell::Food => eat(individual, stance, target, reachable, world, config, rng),
-        Cell::Hazard => Action::TouchHazard,
-        Cell::Individual(other) if config.random_fight_chance > 0.0 && other.health > 0 => {
-            Action::Attack { victim: target }
-        }
-        Cell::Wall | Cell::Individual(_) => Action::Stay,
-    }
+    (action, picked)
 }
 
 /// What a brain sees of one option: the cell itself, or its own cell when staying.
@@ -299,16 +335,17 @@ fn act_at_random(
     world: &World,
     config: &Config,
     rng: &mut impl RngExt,
-) -> Action {
-    let Some(target) = reachable.choose(rng) else {
-        return Action::Stay;
+) -> (Action, Option<Option<Position>>) {
+    let Some(target) = reachable.choose(rng).copied() else {
+        return (Action::Stay, None);
     };
-    match world.get(*target) {
-        Cell::Empty => Action::Move(*target),
-        Cell::Food => eat(individual, stance, *target, reachable, world, config, rng),
+    let action = match world.get(target) {
+        Cell::Empty => Action::Move(target),
+        Cell::Food => eat(individual, stance, target, reachable, world, config, rng),
         Cell::Hazard => Action::TouchHazard,
         Cell::Wall | Cell::Individual(_) => Action::Stay,
-    }
+    };
+    (action, Some(Some(target)))
 }
 
 fn choose_cell(

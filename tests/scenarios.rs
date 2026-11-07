@@ -825,6 +825,115 @@ fn children_inherit_brains_and_the_control_draws_fresh_ones() {
     }
 }
 
+// ---------- Lifetime learning ----------
+
+fn learning_rules() -> Config {
+    Config {
+        learning_enabled: true,
+        ..brain_rules()
+    }
+}
+
+/// A brain born loving hazards learns, from the pain, to stop touching them. A fast rate,
+/// so a single painful lesson outweighs the inborn love.
+#[test]
+fn a_learner_stops_touching_a_hazard_that_hurts_it() {
+    let touches = |config: &Config, seed| {
+        let mut learner = with_brain(adult(1, Male, 100.0), brain_that_loves(HAZARD_INPUT));
+        learner.health = 99;
+        learner.lifespan = 1_000;
+        let mut world = world_with_center(learner);
+        fill_ring(&mut world, CENTER, &Cell::Wall);
+        world.set(RIGHT, Cell::Hazard);
+        let mut simulation = simulation_with(config.clone(), world, seed);
+        let mut touched = 0;
+        for _ in 0..6 {
+            let before = only_individual(&simulation).1.health;
+            simulation.step();
+            if only_individual(&simulation).1.health + 1 < before {
+                touched += 1;
+            }
+        }
+        touched
+    };
+    let fast = Config {
+        learning_rate: 2.0,
+        ..learning_rules()
+    };
+    for seed in 0..SEEDS {
+        assert_eq!(
+            touches(&brain_rules(), seed),
+            6,
+            "without learning, every turn"
+        );
+        assert!(touches(&fast, seed) < 3, "seed {seed}");
+    }
+}
+
+/// Acting at random also teaches: the brain learns from whatever the individual did, and
+/// its score for that option moves toward what it caused.
+#[test]
+fn random_turns_teach_a_learning_brain_too() {
+    let meal = learning_rules().food_gain as f32 / learning_rules().max_health as f32;
+    let food = genetic_algo::brain::Features {
+        empty: false,
+        food: true,
+        wall: false,
+        hazard: false,
+        individual: false,
+        stay: false,
+        hunger: 0.8,
+        food_nearby: 1.0,
+        hazards_nearby: 0.0,
+    };
+    let mut closer = 0;
+    for seed in 0..SEEDS {
+        let blank =
+            Brain::from_weights(std::array::from_fn(
+                |i| {
+                    if i < INPUTS * HIDDEN { 4 } else { 8 }
+                },
+            ));
+        let mut learner = with_brain(adult(1, Male, 0.0), blank.clone());
+        learner.health = 20;
+        let mut world = world_with_center(learner);
+        fill_ring(&mut world, CENTER, &Cell::Food);
+        let mut simulation = simulation_with(learning_rules(), world, seed);
+        simulation.step();
+        let brain = only_individual(&simulation)
+            .1
+            .brain
+            .expect("still has its brain");
+        assert!(
+            brain.learner().is_some(),
+            "a random turn taught it, seed {seed}"
+        );
+        if (brain.score(&food) - meal).abs() < (blank.score(&food) - meal).abs() {
+            closer += 1;
+        }
+    }
+    assert!(closer > SEEDS * 3 / 4, "{closer} of {SEEDS}");
+}
+
+#[test]
+fn without_the_switch_nothing_is_learned() {
+    let mut world = world_with_center(with_brain(
+        adult(1, Male, 100.0),
+        brain_that_loves(FOOD_INPUT),
+    ));
+    world.set(RIGHT, Cell::Food);
+    let mut simulation = simulation_with(brain_rules(), world, 1);
+    simulation.step();
+    assert!(
+        only_individual(&simulation)
+            .1
+            .brain
+            .unwrap()
+            .learner()
+            .is_none()
+    );
+}
+
 // ---------- Reproduction ----------
 
 fn couple() -> World {

@@ -241,3 +241,12 @@ fn the_brains_preset_and_checkboxes_reach_the_simulation() {
             .brains_enabled
     );
 }
+
+#[test]
+fn the_learning_checkbox_reaches_the_simulation() {
+    let mut harness = harness();
+    click(&mut harness, "Evolved brains");
+    click(&mut harness, "Learn during life");
+    let config = harness.state().controller.simulation().config();
+    assert!(config.brains_enabled && config.learning_enabled);
+}

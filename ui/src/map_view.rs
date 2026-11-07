@@ -167,10 +167,10 @@ fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) 
         row("Appetite", format!("{:.2}", civics.policy.appetite));
         row("Times elected", civics.terms_served().to_string());
         row("Elections recalled", civics.memories().len().to_string());
-        let brain = if individual.brain.is_some() {
-            "evolved"
-        } else {
-            "rules"
+        let brain = match individual.brain.as_deref() {
+            Some(brain) if brain.learner().is_some() => "evolved, learning",
+            Some(_) => "evolved",
+            None => "rules",
         };
         row("Decides by", brain.to_owned());
         row(
