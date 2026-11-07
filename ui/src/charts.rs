@@ -16,9 +16,10 @@ const CARD_CHROME: f32 = 48.0;
 const CARD_GAP: f32 = 8.0;
 const MIN_HEIGHT: f32 = 140.0;
 
-/// Evenly spaced entries that always include the latest one, so the chart ends at "now".
-fn thin(history: &[TickStats]) -> Vec<&TickStats> {
-    let stride = (history.len() / MAX_POINTS).max(1);
+/// Evenly spaced entries, about `max_points` of them, that always include the latest one,
+/// so a chart ends at "now".
+pub fn thin(history: &[TickStats], max_points: usize) -> Vec<&TickStats> {
+    let stride = (history.len() / max_points).max(1);
     let mut points: Vec<&TickStats> = history.iter().step_by(stride).collect();
     if let Some(last) = history.last()
         && stride > 1
@@ -62,12 +63,13 @@ pub struct Panels {
 
 pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panels: Panels) {
     let palette = theme::palette(ui.ctx());
-    let points = thin(history);
+    let points = thin(history, MAX_POINTS);
     let count = 2 + usize::from(panels.speed) + usize::from(panels.policy);
     // Charts share what is left of the panel's height, but never get shorter than
     // MIN_HEIGHT: below that the panel scrolls instead.
-    let height =
-        ((ui.available_height() - count as f32 * CARD_CHROME) / count as f32).max(MIN_HEIGHT);
+    let gaps = (count - 1) as f32 * (CARD_GAP + ui.spacing().item_spacing.y);
+    let height = ((ui.available_height() - count as f32 * CARD_CHROME - gaps) / count as f32)
+        .max(MIN_HEIGHT);
     let gap = |ui: &mut egui::Ui| ui.add_space(CARD_GAP);
 
     card(ui, "Smartness", None, |ui| {
@@ -95,8 +97,8 @@ pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panel
                         .width(1.5),
                     );
                 }
-                // The line takes the colour of the smartness it shows, as on the map's
-                // scale from dim to bright.
+                // The line takes the colour of the smartness it shows, along the logo's
+                // gradient.
                 plot.line(
                     series("Mean", &points, |s| s.smartness.map(|v| f64::from(v.mean)))
                         .color(palette.accent)
@@ -185,14 +187,14 @@ mod tests {
     #[test]
     fn short_histories_are_kept_whole() {
         let history = history(100);
-        assert_eq!(thin(&history).len(), 100);
+        assert_eq!(thin(&history, MAX_POINTS).len(), 100);
     }
 
     #[test]
     fn long_histories_are_thinned_and_end_at_the_latest_tick() {
         for length in [1_201, 5_000, 123_457, 1_000_000] {
             let history = history(length);
-            let points = thin(&history);
+            let points = thin(&history, MAX_POINTS);
             assert!(
                 points.len() <= MAX_POINTS * 2 + 1,
                 "{length}: {}",
@@ -205,6 +207,6 @@ mod tests {
 
     #[test]
     fn empty_history_is_harmless() {
-        assert!(thin(&[]).is_empty());
+        assert!(thin(&[], MAX_POINTS).is_empty());
     }
 }

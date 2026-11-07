@@ -1,6 +1,7 @@
-//! Draws the world. Cell colors come from the core's shared palette, so the map matches the
-//! terminal and GIF output; shapes distinguish each kind of cell, so identity never relies
-//! on color alone. The map stays dark in both themes.
+//! Draws the world. Cell colors come from the core's shared palette, so cells look as in the
+//! terminal and GIF output; the background is the theme's `map_background`, a navy that
+//! matches the app. Shapes distinguish each kind of cell, so identity never relies on
+//! color alone. The map stays dark in both themes.
 
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 

@@ -310,3 +310,13 @@ fn a_new_run_drops_the_selection() {
     click(&mut harness, "New random run");
     assert_eq!(harness.state().selected, None);
 }
+
+#[test]
+fn the_seed_of_the_run_on_screen_stays_visible_while_the_field_is_edited() {
+    let mut harness = harness();
+    let seed = harness.state().controller.seed();
+    harness.state_mut().controller.setup.seed_text = "12345".to_owned();
+    harness.step();
+    let shown = format!("This run's seed: {seed}");
+    assert!(harness.query_by_label(&shown).is_some());
+}
