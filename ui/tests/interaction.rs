@@ -5,11 +5,10 @@ use egui_kittest::{Harness, kittest::Queryable as _};
 use genetic_algo_ui::app::App;
 
 fn harness() -> Harness<'static, App> {
-    let context = egui::Context::default();
-    let app = App::new(&context);
+    // Built on the harness's own context, which `App::new` sets up (fonts, themes).
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1360.0, 1600.0))
-        .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+        .build_eframe(|creation| App::new(&creation.egui_ctx));
     harness.step();
     harness
 }
