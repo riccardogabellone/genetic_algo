@@ -761,6 +761,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_material_icons"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a49b8d9217d02f0344160bff2f04fdc598f3244f65dc04ea7bf6ab74196d419c"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "egui_plot"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1018,6 +1027,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui_kittest",
+ "egui_material_icons",
  "egui_plot",
  "genetic_algo",
  "rand",
