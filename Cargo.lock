@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "genetic_algo_ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "eframe",
  "egui-notify",
