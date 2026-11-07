@@ -8,7 +8,7 @@ use genetic_algo::leadership::TermJudgement;
 use crate::{
     charts::{self, Panels},
     controller::{Controller, Preset},
-    map_view, theme,
+    identity, map_view, theme, toolbar,
 };
 
 /// Simulation time allowed per frame, which keeps a 60 fps window responsive.
@@ -19,6 +19,7 @@ const RELIABLE_MAP_SIDE: usize = 16;
 
 pub struct App {
     pub controller: Controller,
+    logo: egui::TextureHandle,
 }
 
 impl App {
@@ -26,6 +27,7 @@ impl App {
         theme::install(context);
         Self {
             controller: Controller::new(u64::from(rand::random::<u32>())),
+            logo: identity::logo_texture(context),
         }
     }
 
@@ -42,6 +44,10 @@ impl App {
         }
         self.controller.advance(elapsed, FRAME_BUDGET);
 
+        egui::Panel::top("toolbar")
+            .exact_size(48.0)
+            .show(ui, |ui| toolbar::show(ui, &mut self.controller, &self.logo));
+        self.status_bar(ui);
         egui::Panel::left("controls")
             .resizable(false)
             .exact_size(290.0)
@@ -68,43 +74,30 @@ impl App {
         }
     }
 
+    /// Why the run stopped, or why an edit was refused. Shown only when there is something
+    /// to say.
+    fn status_bar(&self, ui: &mut egui::Ui) {
+        let palette = theme::palette(ui.ctx());
+        let message = self
+            .controller
+            .error()
+            .map(|error| (error.to_owned(), palette.danger))
+            .or_else(|| {
+                self.controller
+                    .outcome_message()
+                    .map(|message| (message, palette.warning))
+            });
+        if let Some((message, color)) = message {
+            egui::Panel::top("status").show(ui, |ui| {
+                ui.colored_label(color, message);
+            });
+        }
+    }
+
     fn controls(&mut self, ui: &mut egui::Ui) {
-        self.run_controls(ui);
-        ui.separator();
         self.new_run_controls(ui);
         ui.separator();
         self.rule_controls(ui);
-    }
-
-    fn run_controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Run");
-        ui.horizontal(|ui| {
-            let label = if self.controller.is_running() {
-                "Pause"
-            } else {
-                "Play"
-            };
-            let can_run = self.controller.simulation().outcome().is_none();
-            if ui.add_enabled(can_run, egui::Button::new(label)).clicked() {
-                self.controller.toggle_running();
-            }
-            if ui.add_enabled(can_run, egui::Button::new("Step")).clicked() {
-                self.controller.step_once();
-            }
-            ui.weak("Space: play / pause");
-        });
-        ui.add(
-            Slider::new(&mut self.controller.ticks_per_second, 1.0..=20_000.0)
-                .logarithmic(true)
-                .integer()
-                .text("ticks/s"),
-        );
-        if let Some(message) = self.controller.outcome_message() {
-            ui.colored_label(theme::palette(ui.ctx()).warning, message);
-        }
-        if let Some(error) = self.controller.error() {
-            ui.colored_label(theme::palette(ui.ctx()).danger, error);
-        }
     }
 
     fn new_run_controls(&mut self, ui: &mut egui::Ui) {
