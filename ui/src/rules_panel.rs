@@ -42,6 +42,7 @@ fn new_run(ui: &mut egui::Ui, controller: &mut Controller) {
     let palette = theme::palette(ui.ctx());
     let mut start_new = false;
     let mut replay = false;
+    let current_seed = controller.seed();
     let setup = &mut controller.setup;
     card(ui, "World", None, |ui| {
         ui.add(Slider::new(&mut setup.width, MIN_MAP_SIDE..=MAX_MAP_SIDE).text("Width"));
@@ -55,6 +56,8 @@ fn new_run(ui: &mut egui::Ui, controller: &mut Controller) {
             ui.add(TextEdit::singleline(&mut setup.seed_text).desired_width(110.0))
                 .labelled_by(label.id);
         });
+        // The field can be edited without replaying, so the run on screen keeps its own.
+        ui.weak(format!("This run's seed: {current_seed}"));
         ui.horizontal(|ui| {
             start_new = ui.button("New random run").clicked();
             replay = ui.button("Replay seed").clicked();

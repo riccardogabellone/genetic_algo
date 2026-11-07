@@ -45,11 +45,15 @@ pub fn show(ui: &mut egui::Ui, controller: &Controller) {
     charts::show(ui, simulation.history(), target, panels);
 }
 
-/// The last `TREND_TICKS` values of a measure, thinned to about `TREND_POINTS`.
+/// The last `TREND_TICKS` values of a measure, thinned to about `TREND_POINTS` and ending
+/// at the latest tick, like the tile's number. Ticks without a value (an extinct
+/// population) are left out; a run stops at extinction, so they can only come last.
 fn trend(history: &[TickStats], value: impl Fn(&TickStats) -> Option<f32>) -> Vec<f32> {
     let recent = &history[history.len().saturating_sub(TREND_TICKS)..];
-    let stride = (recent.len() / TREND_POINTS).max(1);
-    recent.iter().step_by(stride).filter_map(value).collect()
+    charts::thin(recent, TREND_POINTS)
+        .into_iter()
+        .filter_map(value)
+        .collect()
 }
 
 /// One headline tile: what it shows and the trend under it.

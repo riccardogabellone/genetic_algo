@@ -94,7 +94,7 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, label: &str) -> Response {
         } else {
             palette.surface_active
         };
-        let fill = lerp_color(off_fill, palette.accent, progress);
+        let fill = theme::mix(off_fill, palette.accent, progress);
         let radius = track.y / 2.0;
         ui.painter().rect_filled(track_rect, radius, fill);
         let knob_x = egui::lerp(
@@ -102,7 +102,7 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, label: &str) -> Response {
             progress,
         );
         let knob = if enabled { palette.text } else { palette.dim };
-        let knob = lerp_color(knob, palette.on_accent, progress);
+        let knob = theme::mix(knob, palette.on_accent, progress);
         ui.painter().circle_filled(
             egui::pos2(knob_x, track_rect.center().y),
             radius * 0.7,
@@ -110,15 +110,6 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool, label: &str) -> Response {
         );
     }
     response
-}
-
-fn lerp_color(from: Color32, to: Color32, amount: f32) -> Color32 {
-    let channel = |a: u8, b: u8| egui::lerp(f32::from(a)..=f32::from(b), amount).round() as u8;
-    Color32::from_rgb(
-        channel(from.r(), to.r()),
-        channel(from.g(), to.g()),
-        channel(from.b(), to.b()),
-    )
 }
 
 /// A group of related settings: a titled frame. With a switch in the header, the switch
@@ -188,17 +179,20 @@ pub fn sparkline(ui: &mut egui::Ui, values: &[f32], fill: Color32, color: impl F
         .collect();
 
     let painter = ui.painter_at(rect);
+    // The area under the line as one triangle strip: separate translucent shapes would
+    // overlap at their anti-aliased edges and show seams.
     let fill = fill.gamma_multiply(0.18);
-    for pair in line.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let area = vec![
-            a,
-            b,
-            egui::pos2(b.x, rect.bottom()),
-            egui::pos2(a.x, rect.bottom()),
-        ];
-        painter.add(egui::Shape::convex_polygon(area, fill, Stroke::NONE));
+    let mut area = egui::Mesh::default();
+    for point in &line {
+        area.colored_vertex(*point, fill);
+        area.colored_vertex(egui::pos2(point.x, rect.bottom()), fill);
     }
+    for segment in 0..line.len() as u32 - 1 {
+        let (top, bottom) = (2 * segment, 2 * segment + 1);
+        area.add_triangle(top, bottom, top + 2);
+        area.add_triangle(bottom, bottom + 2, top + 2);
+    }
+    painter.add(area);
     for (pair, value) in line.windows(2).zip(&values[1..]) {
         painter.line_segment([pair[0], pair[1]], Stroke::new(1.5, color(*value)));
     }

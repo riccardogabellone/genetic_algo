@@ -1,5 +1,8 @@
-//! Colours, fonts and spacing. Every colour the UI draws comes from a [`Palette`]; views
-//! ask for the active one with [`palette`] instead of naming colours themselves.
+//! Colours, fonts and spacing. Every colour the UI's chrome draws comes from a [`Palette`];
+//! views ask for the active one with [`palette`] instead of naming colours themselves. The
+//! map is the exception: its cells use the core's palette, shared with the terminal and
+//! GIF output, and its marks (leader ring, selection) are fixed, since the map is dark in
+//! both themes.
 //!
 //! The colour roles, the way they map onto egui's visuals and the text-rendering
 //! adjustments follow fastframe (https://fastframe.dev, MIT): fastframe-theme for the
@@ -54,7 +57,7 @@ pub struct Palette {
 }
 
 /// `from` blended towards `to` by `amount` (0 to 1), per channel.
-const fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
+pub(crate) const fn mix(from: Color32, to: Color32, amount: f32) -> Color32 {
     const fn channel(from: u8, to: u8, amount: f32) -> u8 {
         (from as f32 + (to as f32 - from as f32) * amount + 0.5) as u8
     }

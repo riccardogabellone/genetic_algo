@@ -96,6 +96,11 @@ impl App {
                 }
                 inspector::show(ui, map_area, world, &mut self.selected);
             });
+        // Clicks in this frame's panels (a new run, a step that ends the run) changed what
+        // the map above was drawn from: catch up, and draw once more even while paused.
+        if self.notice_changes() {
+            ui.ctx().request_repaint();
+        }
         self.toasts.show(ui.ctx());
 
         if self.controller.is_running() {
@@ -103,15 +108,18 @@ impl App {
         }
     }
 
-    /// Reacts to what changed since the last frame: a new run drops the selection (ids
-    /// restart with it), and a run that just finished says why in a toast.
-    fn notice_changes(&mut self) {
-        if self.controller.run() != self.seen_run {
+    /// Reacts to what changed since it last ran: a new run drops the selection (ids
+    /// restart with it), and a run that just finished says why in a toast. Returns whether
+    /// anything changed.
+    fn notice_changes(&mut self) -> bool {
+        let new_run = self.controller.run() != self.seen_run;
+        if new_run {
             self.seen_run = self.controller.run();
             self.seen_finished = false;
             self.selected = None;
         }
         let finished = self.controller.simulation().outcome().is_some();
+        let just_finished = finished && !self.seen_finished;
         if finished
             && !self.seen_finished
             && let Some(message) = self.controller.outcome_summary()
@@ -124,26 +132,26 @@ impl App {
                 .closable(false);
         }
         self.seen_finished = finished;
+        new_run || just_finished
     }
 
-    /// Why the run stopped, or why an edit was refused. Shown only when there is something
-    /// to say.
+    /// Why the run stopped and why an edit was refused, each on its own line. Shown only
+    /// when there is something to say.
     fn status_bar(&self, ui: &mut egui::Ui) {
         let palette = theme::palette(ui.ctx());
-        let message = self
-            .controller
-            .error()
-            .map(|error| (error.to_owned(), palette.danger))
-            .or_else(|| {
-                self.controller
-                    .outcome_message()
-                    .map(|message| (message, palette.warning))
-            });
-        if let Some((message, color)) = message {
-            egui::Panel::top("status").show(ui, |ui| {
-                ui.colored_label(color, message);
-            });
+        let outcome = self.controller.outcome_message();
+        let error = self.controller.error();
+        if outcome.is_none() && error.is_none() {
+            return;
         }
+        egui::Panel::top("status").show(ui, |ui| {
+            if let Some(outcome) = outcome {
+                ui.colored_label(palette.warning, outcome);
+            }
+            if let Some(error) = error {
+                ui.colored_label(palette.danger, error);
+            }
+        });
     }
 }
 
