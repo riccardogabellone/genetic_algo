@@ -6,6 +6,7 @@ pub mod charts;
 pub mod controller;
 pub mod identity;
 pub mod map_view;
+pub mod rules_panel;
 pub mod theme;
 pub mod toolbar;
 pub mod widgets;

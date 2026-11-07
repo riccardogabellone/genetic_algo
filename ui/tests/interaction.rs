@@ -249,3 +249,19 @@ fn the_learning_checkbox_reaches_the_simulation() {
     let config = harness.state().controller.simulation().config();
     assert!(config.brains_enabled && config.learning_enabled);
 }
+
+#[test]
+fn a_rules_settings_show_only_while_its_switch_is_on() {
+    // A slider and its text are two nodes with the same label, hence `query_all`.
+    let mut harness = harness();
+    assert!(harness.query_all_by_label("Term (ticks)").next().is_none());
+    assert!(harness.query_by_label("Inherit brains").is_none());
+
+    click(&mut harness, "Elect leaders");
+    assert!(harness.query_all_by_label("Term (ticks)").next().is_some());
+    click(&mut harness, "Evolved brains");
+    assert!(harness.query_by_label("Inherit brains").is_some());
+
+    click(&mut harness, "Elect leaders");
+    assert!(harness.query_all_by_label("Term (ticks)").next().is_none());
+}
