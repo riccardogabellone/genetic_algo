@@ -6,6 +6,12 @@ description = "Graphical front end for the evolution sandbox."
 license = "MIT"
 repository = "https://github.com/riccardogabellone/genetic_algo"
 
+# The executable users see: GeneticAlgo.exe on Windows, GeneticAlgo elsewhere. Cargo allows
+# no spaces in it; the display name "Genetic Algo" comes from identity.rs and the packages.
+[[bin]]
+name = "GeneticAlgo"
+path = "src/main.rs"
+
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 egui-notify = "0.24"
@@ -33,7 +39,7 @@ category = "Education"
 before-packaging-command = "cargo build --release -p genetic_algo_ui"
 binaries-dir = "../target/release"
 out-dir = "../target/packages"
-binaries = [{ path = "genetic_algo_ui", main = true }]
+binaries = [{ path = "GeneticAlgo", main = true }]
 icons = [
     "../assets/icons/icon-32.png",
     "../assets/icons/icon-64.png",
@@ -84,7 +90,7 @@ section = "science"
 
 # The AppImage tooling looks for the desktop entry under the binary's name.
 [package.metadata.packager.appimage.files]
-"../packaging/linux/io.github.riccardogabellone.GeneticAlgo.desktop" = "usr/share/applications/genetic_algo_ui.desktop"
+"../packaging/linux/io.github.riccardogabellone.GeneticAlgo.desktop" = "usr/share/applications/GeneticAlgo.desktop"
 "../assets/logo/logo.svg" = "usr/share/icons/hicolor/scalable/apps/io.github.riccardogabellone.GeneticAlgo.svg"
 "../assets/icons/icon-16.png" = "usr/share/icons/hicolor/16x16/apps/io.github.riccardogabellone.GeneticAlgo.png"
 "../assets/icons/icon-32.png" = "usr/share/icons/hicolor/32x32/apps/io.github.riccardogabellone.GeneticAlgo.png"

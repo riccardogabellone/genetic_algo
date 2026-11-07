@@ -63,8 +63,8 @@ jobs:
         run: |
           $version = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).packages |
             Where-Object name -eq genetic_algo_ui | Select-Object -ExpandProperty version
-          Compress-Archive -Path target/release/genetic_algo_ui.exe, LICENSE `
-            -DestinationPath "target/packages/genetic_algo_ui_${version}_x64-portable.zip"
+          Compress-Archive -Path target/release/GeneticAlgo.exe, LICENSE `
+            -DestinationPath "target/packages/GeneticAlgo_${version}_x64-portable.zip"
       - uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.os }}
