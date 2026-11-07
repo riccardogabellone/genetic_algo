@@ -216,6 +216,7 @@ pub fn stat_tile(
     card_frame(palette).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 2.0;
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
         ui.label(RichText::new(caption).small().color(palette.secondary));
         ui.label(
             RichText::new(value)
