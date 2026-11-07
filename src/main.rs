@@ -74,6 +74,18 @@ struct Args {
     /// What voters judge a finished term by.
     #[arg(long, value_enum, default_value_t = Judgement::Violence)]
     judge_terms: Judgement,
+    /// When an individual thinks, an inherited neural network chooses its action.
+    #[arg(long)]
+    brains: bool,
+    /// Control experiment: every child gets a fresh random brain instead of inheriting one.
+    #[arg(long, requires = "brains")]
+    random_brains: bool,
+    /// Chance that each brain weight mutates in a child [default: from the rules].
+    #[arg(long)]
+    brain_mutation_rate: Option<f32>,
+    /// Largest mutation of one brain weight, in steps of 1/16 [default: from the rules].
+    #[arg(long)]
+    brain_mutation_step: Option<u8>,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -156,6 +168,14 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
     }
     if let Some(memory) = args.memory {
         config.max_memory = memory;
+    }
+    config.brains_enabled = args.brains;
+    config.brains_inherited = !args.random_brains;
+    if let Some(rate) = args.brain_mutation_rate {
+        config.brain_mutation_rate = rate;
+    }
+    if let Some(step) = args.brain_mutation_step {
+        config.brain_mutation_step = step;
     }
     if let Some(ticks) = args.ticks {
         config.max_ticks = ticks;

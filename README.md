@@ -63,6 +63,14 @@ Every numeric value is in `src/config.rs`. Defaults are in parentheses.
 - **influence** (`--leader-influence`, 0.5): each turn a follower acts on the leader's policy instead of its own with probability 0.5
 - memories and terms are not inherited
 
+## Evolved brains (off by default, `--brains`)
+- each individual inherits a tiny neural network: 9 inputs, 4 hidden units, 44 weights. Its weights are a genome, not trained: founders' are random, children take each weight from one parent at random, and each may mutate (`--brain-mutation-rate`, 0.05; `--brain-mutation-step`, 8 steps of 1/16)
+- when an individual thinks (see smartness), its brain chooses instead of the hand-written rules: it scores staying put and every reachable cell, and the best score wins
+- for each option the brain sees what the cell holds (empty, food, wall, hazard, individual, or staying), its own hunger, and how much food and how many hazards surround that cell
+- the chosen cell then has its usual effect: food is eaten, a hazard hurts, a wall stops it. An individual is attacked only when unprovoked fights are allowed
+- mating still comes first, as for everyone
+- **control** (`--random-brains`): every child gets a fresh random brain, so nothing can accumulate across generations
+
 ## End of the run
 The run stops at the first of these conditions:
 - extinction
@@ -108,6 +116,8 @@ Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a 
 | `behavior` | Chooses an action; reads the world, changes nothing |
 | `simulation` | Runs ticks, applies actions, keeps the history |
 | `stats` | Per-tick measurements |
+| `leadership` | Policies, elections and memory of past terms |
+| `brain` | Evolved neural networks and their inheritance |
 | `sampling` | Triangular distribution |
 | `render` | Terminal, chart and GIF front ends, sharing one `palette` |
 
@@ -165,6 +175,25 @@ Fights select against aggression, but acting on a leader's policy hides an indiv
 | 2 ticks | 6.4 | 1.037 | 0.919 | 1.018 |
 
 The standard error of each mean is about 0.02. A voter's own health over a term is mostly luck with food, so judging by it never helps. A leader's aggression strongly drives the population's fight rate (correlation about 0.9), so judging by that works: memory tilts 75% of the votes it changes toward the more peaceful candidate. But with 30-tick terms an adult lives through so few elections that it has little to remember. At 2-tick terms, memory elects calmer leaders, with about 13% fewer fights.
+
+Evolved brains, over 24 runs of 20,000 ticks on 32x32. Means of the last 2,000 ticks; no run went extinct.
+
+| Decisions by | Smartness at tick 1,000 | Final smartness | Population | Hazard deaths | Overfed deaths |
+|---|---|---|---|---|---|
+| Hand-written rules | 23.1 | 94.9 | 645 | 0.8% | 0.0% |
+| Evolved brains | 12.8 | 94.8 | 633 | 1.0% | 0.4% |
+| Random brains, not inherited | 8.6 | 28.8 | 489 | 11.4% | 3.3% |
+
+Starting from random weights, evolved brains reach the level of the hand-written rules, only more slowly. Without inheritance, thinking with a random brain is harmful, so selection keeps smartness low. What the brains learned, as the share preferring the first option:
+
+| Situation | Founders | Evolved, tick 20,000 | Not inherited |
+|---|---|---|---|
+| Food over an empty cell when hungry | 49% | 100% | 58% |
+| An empty cell over a hazard | 52% | 100% | 50% |
+| Moving over staying put | 48% | 98% | 48% |
+| Food over an empty cell when full | 52% | 98% | 56% |
+
+Evolved brains became greedy, eating even when full, which explains their few overfed deaths.
 
 # Testing
 ```sh

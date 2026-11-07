@@ -42,6 +42,7 @@ pub fn adult(id: u64, gender: Gender, smartness: f32) -> Individual {
         speed: 1,
         mating_cooldown: 0,
         civics: Civics::neutral(&Config::default()),
+        brain: None,
     }
 }
 

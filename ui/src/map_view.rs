@@ -167,6 +167,12 @@ fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) 
         row("Appetite", format!("{:.2}", civics.policy.appetite));
         row("Times elected", civics.terms_served().to_string());
         row("Elections recalled", civics.memories().len().to_string());
+        let brain = if individual.brain.is_some() {
+            "evolved"
+        } else {
+            "rules"
+        };
+        row("Decides by", brain.to_owned());
         row(
             "Age",
             format!("{} / {}", individual.age, individual.lifespan),
@@ -198,6 +204,7 @@ pub fn legend(ui: &mut egui::Ui) {
             speed: 1,
             mating_cooldown: 0,
             civics: Civics::neutral(&Config::default()),
+            brain: None,
         }))
     };
     ui.horizontal_wrapped(|ui| {

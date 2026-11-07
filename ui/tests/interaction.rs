@@ -8,7 +8,7 @@ fn harness() -> Harness<'static, App> {
     let context = egui::Context::default();
     let app = App::new(&context);
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(1360.0, 1000.0))
+        .with_size(egui::vec2(1360.0, 1600.0))
         .build_ui_state(|ui, app: &mut App| app.show(ui), app);
     harness.step();
     harness
@@ -208,4 +208,36 @@ fn the_term_judgement_radio_buttons_reach_the_simulation() {
     click(&mut harness, "Fights overall");
     let config = harness.state().controller.simulation().config();
     assert_eq!(config.term_judgement, TermJudgement::Violence);
+}
+
+#[test]
+fn the_brains_preset_and_checkboxes_reach_the_simulation() {
+    let mut harness = harness();
+    click(&mut harness, "Brains");
+    assert!(
+        harness
+            .state()
+            .controller
+            .simulation()
+            .config()
+            .brains_enabled
+    );
+    click(&mut harness, "Inherit brains");
+    assert!(
+        !harness
+            .state()
+            .controller
+            .simulation()
+            .config()
+            .brains_inherited
+    );
+    click(&mut harness, "Evolved brains");
+    assert!(
+        !harness
+            .state()
+            .controller
+            .simulation()
+            .config()
+            .brains_enabled
+    );
 }

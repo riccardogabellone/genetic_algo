@@ -271,3 +271,79 @@ fn fights_select_against_aggression_unless_leaders_shield_it() {
     );
     assert!(led > free + 0.15, "led {led:.2}, free {free:.2}");
 }
+
+/// Mean smartness at the end with brains on, across seeds.
+fn smartness_with_brains(inherited: bool) -> f32 {
+    let mut total = 0.0;
+    for seed in 0..SEEDS {
+        let config = Config {
+            max_ticks: TICKS,
+            target_smartness: 100.0,
+            brains_enabled: true,
+            brains_inherited: inherited,
+            ..Config::default()
+        };
+        let mut simulation = Simulation::new(config, seed).unwrap();
+        simulation.run_to_end();
+        total += simulation
+            .latest()
+            .smartness
+            .expect("the population survives")
+            .mean;
+    }
+    total / SEEDS as f32
+}
+
+/// A thinking individual uses its brain, so smartness only pays once brains are good.
+/// Inherited brains improve and smartness rises with them; fresh random brains every
+/// generation make thinking harmful, which holds smartness down.
+#[test]
+fn inherited_brains_improve_and_random_ones_do_not() {
+    let (inherited, random) = (smartness_with_brains(true), smartness_with_brains(false));
+    assert!(
+        inherited > random + 10.0,
+        "inherited {inherited:.1}, random {random:.1}"
+    );
+}
+
+/// Nothing is hard-coded: founders' brains are random, yet evolved ones eat when hungry and
+/// avoid hazards.
+#[test]
+fn evolved_brains_learn_to_eat_and_avoid_hazards() {
+    use genetic_algo::brain::{Brain, Features};
+    let option = |food: bool, hazard: bool| Features {
+        empty: !food && !hazard,
+        food,
+        wall: false,
+        hazard,
+        individual: false,
+        stay: false,
+        hunger: 0.8,
+        food_nearby: 0.0,
+        hazards_nearby: 0.0,
+    };
+    let config = Config {
+        max_ticks: 6_000,
+        target_smartness: 100.0,
+        brains_enabled: true,
+        ..Config::default()
+    };
+    let mut simulation = Simulation::new(config, 1).unwrap();
+    simulation.run_to_end();
+    let brains: Vec<&Brain> = simulation
+        .world()
+        .individuals()
+        .filter_map(|(_, individual)| individual.brain.as_deref())
+        .collect();
+    let share = |test: &dyn Fn(&Brain) -> bool| {
+        brains.iter().filter(|brain| test(brain)).count() as f32 / brains.len() as f32
+    };
+    let eats =
+        share(&|brain| brain.score(&option(true, false)) > brain.score(&option(false, false)));
+    let avoids =
+        share(&|brain| brain.score(&option(false, false)) > brain.score(&option(false, true)));
+    assert!(
+        eats > 0.9 && avoids > 0.9,
+        "eats {eats:.2}, avoids hazards {avoids:.2}"
+    );
+}

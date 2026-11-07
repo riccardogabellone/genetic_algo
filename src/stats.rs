@@ -86,7 +86,7 @@ impl TickStats {
                 Gender::Male => males += 1,
                 Gender::Female => females += 1,
             }
-            total_speed += individual.speed;
+            total_speed += usize::from(individual.speed);
             sum += f64::from(individual.smartness);
             innate_sum += f64::from(individual.innate_smartness);
             aggression_sum += f64::from(individual.civics.policy.aggression);

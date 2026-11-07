@@ -24,7 +24,10 @@ fn snapshot(simulation: &Simulation) -> Snapshot {
         individuals: world
             .individuals()
             .map(|(position, individual)| {
-                (individual.id, (position, individual.age, individual.speed))
+                (
+                    individual.id,
+                    (position, individual.age, usize::from(individual.speed)),
+                )
             })
             .collect(),
         walls: world.count(&Cell::Wall),
@@ -48,7 +51,7 @@ fn check_individuals(simulation: &Simulation) {
             assert_eq!(individual.smartness, individual.innate_smartness);
         }
         assert!((0.0..=1.0).contains(&individual.reproduction));
-        assert!((1..=config.max_speed).contains(&individual.speed));
+        assert!((1..=config.max_speed).contains(&usize::from(individual.speed)));
         let civics = &individual.civics;
         assert!((0.0..=MAX_AGGRESSION).contains(&civics.policy.aggression));
         assert!((0.0..=1.0).contains(&civics.policy.appetite));
@@ -308,11 +311,33 @@ fn invariants_hold_under_extreme_rules() {
             ..Config::for_size(4, 4)
         },
     ];
+    let brains = [
+        Config {
+            brains_enabled: true,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            brains_enabled: true,
+            brains_inherited: false,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            brains_enabled: true,
+            brain_mutation_rate: 1.0,
+            brain_mutation_step: 127,
+            random_fight_chance: 0.5,
+            contest_fight_chance: 1.0,
+            leaders_enabled: true,
+            max_speed: 4,
+            ..Config::for_size(16, 16)
+        },
+    ];
     for config in extremes
         .into_iter()
         .chain(new_rules)
         .chain(fights)
         .chain(leaders)
+        .chain(brains)
     {
         run_checked(config, 3, 150);
     }
@@ -431,6 +456,7 @@ fn the_target_counts_only_for_a_real_population() {
         speed: 1,
         mating_cooldown: 0,
         civics: Civics::neutral(&Config::default()),
+        brain: None,
     };
     let config = Config {
         max_ticks: 1_000,

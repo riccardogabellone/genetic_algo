@@ -239,6 +239,31 @@ impl App {
         });
 
         ui.add_space(4.0);
+        ui.strong("Neural networks");
+        track(
+            ui.checkbox(&mut rules.brains, "Evolved brains")
+                .on_hover_text("When an individual thinks, an inherited neural network chooses instead of the hand-written rules. Newborns get brains; individuals alive when this is switched on keep the rules."),
+        );
+        ui.add_enabled_ui(rules.brains, |ui| {
+            track(
+                ui.checkbox(&mut rules.brains_inherited, "Inherit brains")
+                    .on_hover_text(
+                        "Untick for the control experiment: every child gets a fresh random brain.",
+                    ),
+            );
+            track(
+                ui.add(
+                    Slider::new(&mut rules.brain_mutation_rate, 0.0..=1.0).text("Weight mutation"),
+                )
+                .on_hover_text("Chance that each weight mutates in a child."),
+            );
+            track(
+                ui.add(Slider::new(&mut rules.brain_mutation_step, 0..=64).text("Mutation size"))
+                    .on_hover_text("Largest change to one weight, in steps of 1/16."),
+            );
+        });
+
+        ui.add_space(4.0);
         ui.strong("Inheritance");
         track(ui.add(Slider::new(&mut rules.mutation_rate, 0.0..=1.0).text("Mutation rate")));
         track(ui.add(Slider::new(&mut rules.mutation_step, 0.0..=30.0).text("Mutation step")));
@@ -503,6 +528,9 @@ mod tests {
             rules.fight_damage = hit;
             rules.fight_smartness_loss = loss;
             rules.leaders = fights > 0.0;
+            rules.brains = fights > 0.0;
+            rules.brain_mutation_rate = rate;
+            rules.brain_mutation_step = (step as u8).min(64);
             app.controller.apply_rules();
             assert_eq!(app.controller.error(), None);
             frame(&mut app, &context, Vec::new());
