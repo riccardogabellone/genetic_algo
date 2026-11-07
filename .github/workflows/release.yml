@@ -92,6 +92,11 @@ jobs:
           path: dist
           pattern: packages-*
           merge-multiple: true
+      # GitHub replaces spaces in asset names with dots on upload, which would leave
+      # checksums.txt naming files that do not exist ("Genetic Algo_..." for the dmg).
+      - name: Remove spaces from file names
+        working-directory: dist
+        run: for file in *' '*; do [ -e "$file" ] && mv "$file" "${file// /_}"; done; ls
       - name: Write checksums
         working-directory: dist
         run: sha256sum * > checksums.txt
