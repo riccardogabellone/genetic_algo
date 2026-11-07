@@ -131,11 +131,7 @@ pub fn card(
     body: impl FnOnce(&mut egui::Ui),
 ) -> bool {
     let palette = theme::palette(ui.ctx());
-    egui::Frame::new()
-        .fill(palette.panel)
-        .stroke(Stroke::new(1.0, palette.outline))
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::symmetric(10, 8))
+    card_frame(palette)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             let mut changed = false;
@@ -217,22 +213,26 @@ pub fn stat_tile(
     trend: impl FnOnce(&mut egui::Ui),
 ) {
     let palette = theme::palette(ui.ctx());
+    card_frame(palette).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.label(RichText::new(caption).small().color(palette.secondary));
+        ui.label(
+            RichText::new(value)
+                .family(egui::FontFamily::Name(theme::SEMIBOLD_FAMILY.into()))
+                .size(20.0)
+                .color(palette.text),
+        );
+        ui.label(RichText::new(detail).small().color(palette.secondary));
+        trend(ui);
+    });
+}
+
+/// The outlined frame around cards and tiles.
+fn card_frame(palette: &theme::Palette) -> egui::Frame {
     egui::Frame::new()
         .fill(palette.panel)
         .stroke(Stroke::new(1.0, palette.outline))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(10, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(RichText::new(caption).small().color(palette.secondary));
-            ui.label(
-                RichText::new(value)
-                    .family(egui::FontFamily::Name(theme::SEMIBOLD_FAMILY.into()))
-                    .size(20.0)
-                    .color(palette.text),
-            );
-            ui.label(RichText::new(detail).small().color(palette.secondary));
-            trend(ui);
-        });
 }

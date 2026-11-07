@@ -265,3 +265,48 @@ fn a_rules_settings_show_only_while_its_switch_is_on() {
     click(&mut harness, "Elect leaders");
     assert!(harness.query_all_by_label("Term (ticks)").next().is_none());
 }
+
+/// Clicks across the map until an individual is selected. The map starts crowded, so the
+/// first few clicks find one.
+fn select_someone(harness: &mut Harness<'static, App>) -> u64 {
+    for y in (120..800).step_by(17) {
+        for x in (340..900).step_by(17) {
+            let position = egui::pos2(x as f32, y as f32);
+            harness.hover_at(position);
+            harness.drag_at(position);
+            harness.step();
+            harness.drop_at(position);
+            harness.step();
+            if let Some(id) = harness.state().selected {
+                harness.step();
+                return id;
+            }
+        }
+    }
+    panic!("no individual found on the map");
+}
+
+#[test]
+fn clicking_an_individual_opens_the_inspector_until_it_is_closed() {
+    let mut harness = harness();
+    assert!(harness.query_by_label("Inspector").is_none());
+    let id = select_someone(&mut harness);
+    assert!(harness.query_by_label("Inspector").is_some());
+    let title = format!("#{id} at");
+    assert!(
+        harness.query_all_by_label_contains(&title).next().is_some(),
+        "the card names #{id}"
+    );
+
+    click(&mut harness, "Close");
+    assert_eq!(harness.state().selected, None);
+    assert!(harness.query_by_label("Inspector").is_none());
+}
+
+#[test]
+fn a_new_run_drops_the_selection() {
+    let mut harness = harness();
+    select_someone(&mut harness);
+    click(&mut harness, "New random run");
+    assert_eq!(harness.state().selected, None);
+}

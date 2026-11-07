@@ -244,6 +244,7 @@ pub struct Controller {
     totals: TickEvents,
     counted_entries: usize,
     error: Option<String>,
+    run: u64,
 }
 
 impl Controller {
@@ -269,6 +270,7 @@ impl Controller {
             totals: TickEvents::default(),
             counted_entries: 1,
             error: None,
+            run: 0,
         }
     }
 
@@ -278,6 +280,12 @@ impl Controller {
 
     pub fn seed(&self) -> u64 {
         self.seed
+    }
+
+    /// Counts the runs started so far, so views can tell when a new one begins: ids restart
+    /// with each run, so anything kept by id must be dropped then.
+    pub fn run(&self) -> u64 {
+        self.run
     }
 
     pub fn is_running(&self) -> bool {
@@ -379,6 +387,7 @@ impl Controller {
                 self.totals = TickEvents::default();
                 self.counted_entries = 1;
                 self.error = None;
+                self.run += 1;
             }
             Err(error) => self.error = Some(error.to_string()),
         }
@@ -524,6 +533,7 @@ mod tests {
         assert_eq!(tick(&controller), 0);
         assert_eq!(controller.outcome_message(), None);
         assert_eq!(*controller.totals(), TickEvents::default());
+        assert_eq!(controller.run(), 2, "the replay and this run");
     }
 
     #[test]

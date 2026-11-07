@@ -5,6 +5,7 @@ pub mod app;
 pub mod charts;
 pub mod controller;
 pub mod identity;
+pub mod inspector;
 pub mod map_view;
 pub mod rules_panel;
 pub mod stats_panel;
