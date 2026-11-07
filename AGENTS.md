@@ -21,6 +21,7 @@ cargo fmt --all --check                                 # formatting
 cargo clippy --workspace --all-targets -- -D warnings   # lints, warnings are errors
 cargo run --release -- --help                           # CLI options
 cargo run --release -p genetic_algo_ui                  # graphical UI
+cargo run --release -p genetic_algo_ui --example screenshot -- out.ppm 240 0 32 light   # window to a PPM, to check UI changes by eye
 ```
 On WSL/Linux the UI needs `sudo apt install libegl1 libegl-mesa0`.
 

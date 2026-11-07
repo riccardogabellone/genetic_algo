@@ -7,20 +7,27 @@ Status marks: **done** is in the code, **planned** is agreed but not built yet.
 ## Product character
 An experiment bench, not a game and not a decorative dashboard. The map is the subject; the rules stay visible while a run plays, because tuning them live and watching the effect is the point. Native, restrained, readable. Borrowed from ZapFast's product rules: keep keyboard operation, zoom, light and dark themes, and narrow windows usable.
 
-## Layout: "Lab bench" (planned)
-Chosen on 2026-11-07 from three mocked directions (A "Lab bench", B "Focus canvas", C "Dashboard tiles"). A keeps the three columns of the current UI and refines them:
-- **Toolbar** across the top: logo, play/pause, step, reset as icon buttons, speed, tick / generation / population readouts, seed, theme toggle.
-- **Left, rules:** collapsible section cards (title, then a card of rows: label, dim one-line description, control on the right). On/off rules use switches, not checkboxes. A collapsed card shows a summary of its values.
-- **Centre, map:** as today (shapes carry identity, brightness carries smartness, ring marks the leader). The map stays dark in both app themes. Clicking an individual selects it.
-- **Right, stats and charts:** stat tiles with sparklines (taken from C), then stacked charts. The smartness line uses the logo's gradient.
-- **Inspector card** for the selected individual, replacing today's hover-only tooltip. A hover card stays for quick looks (taken from B).
-- **Toasts** for events such as "target reached" (taken from B).
+## Layout: "Lab bench" (done)
+Chosen on 2026-11-07 from three mocked directions (A "Lab bench", B "Focus canvas", C "Dashboard tiles"). A keeps the three columns of the earlier UI and refines them. One module per region:
+- **Toolbar** (`toolbar.rs`) across the top: logo, play/pause (the one accent-filled button) and step as icon buttons, speed, tick / generation / population / mean-smartness readouts, and a theme toggle cycling system, light and dark. Under it, a status strip says why a run stopped or why an edit was refused, only when there is something to say.
+- **Left, rules** (`rules_panel.rs`): a World card for the next run (size, start smart, seed, new run, replay), the presets, then one card per group of rules. A rule that is either on or off (leaders, brains, the goal) has a switch in its card's header, and its settings show only while it is on. Other on/off settings are switches too.
+- **Centre, map** (`map_view.rs`): shapes carry identity, brightness carries smartness, a ring marks the leader. The map stays dark in both themes. Hovering shows a quick tooltip; clicking an individual selects it, outlined in white.
+- **Inspector** (`inspector.rs`), taken from B: a card over the map's top-right corner for the selected individual. It follows the individual by id as it moves and says when it has died. A new run drops the selection, because ids restart with each run.
+- **Right, stats and charts** (`stats_panel.rs`, `charts.rs`): tiles for population and mean smartness (and speed when it can evolve) with sparklines of the last 600 ticks, taken from C; a card with births, meals, fights and deaths split by cause in one bar; the leadership when leaders are on; then one card per chart. The mean-smartness line takes the logo's gradient by value. Charts are at least 140 px tall and the panel scrolls when they do not fit.
+- **Toasts** (`egui-notify`), taken from B: when a run finishes, a toast says why for six seconds.
+
+Differences from the mockup, on purpose:
+- **No reset button in the toolbar.** "New random run" and "Replay seed" stay in the World card, next to the settings they apply; two buttons with the same name would also confuse screen readers.
+- **Cards do not collapse.** A switch already hides a rule's settings while it is off, and the panel scrolls; collapsing the always-on groups would add state for little gain.
+- **The toast cannot be closed by hand.** egui-notify draws its close button with a glyph the bundled fonts lack, so it is turned off; the toast leaves on its own and the status strip keeps the message.
+
+Accessibility: icon buttons and switches name themselves (`widgets.rs`), and eframe's `accesskit` feature is on, so screen readers and the interaction tests find controls by those names. It costs about 5.6 MB of binary.
 
 Why not B: it hides the rules while a run plays. Why not C: the most code (`egui_tiles`, saved layouts) for the smallest map. C's resizable panes stay an option if fixed panels prove limiting.
 
 ## Theme (done)
 - **Colour roles,** from fastframe-theme: `window`, `panel`, `surface`, `surface_hover`, `surface_active`, `outline`, `text`, `secondary`, `dim`, `accent`, `accent_hover`, `on_accent`, `danger`, `warning`, plus chart series colours. One token struct feeds `egui::Visuals`; nothing else hard-codes a colour.
-- **Mapping onto egui,** after ZapFast's `theme.rs`: widget states are `surface` / `surface_hover` / `surface_active` with no border; non-interactive frames get a 1 px `outline`; selection is `accent` at 35%; corner radius 8 for windows and menus, 6 for widgets; `button_padding` 12x6, `interact_size` height 28.
+- **Mapping onto egui,** after ZapFast's `theme.rs`: widget states are `surface` / `surface_hover` / `surface_active` with no border; non-interactive frames get a 1 px `outline`; selection is `accent` at 35%; corner radius 8 for windows, menus and cards, 6 for widgets. Spacing is tighter than ZapFast's (`button_padding` 10x4 instead of 12x6, `interact_size` height 24 instead of 28), because the rules panel is dense.
 - **Light and dark,** following the system (`ThemePreference::System`), with a manual toggle. A palette can be derived from background, text and accent with fastframe's recipe: panel = mix(bg, fg, 3%), surface 8%, hover 12%, active 18%, outline 20%, secondary 70%, dim 50%.
 - **Identity colours** come from the logo: navy `#00163D`, then teal `#00D1E0`, green `#83E088`, yellow `#FFD21F`, orange `#FE9A0D`. The dark theme derives from a navy background, the light one from a near-white; both use the logo's teal as the accent and its gradient for smartness, darkened in the light theme where it would wash out.
 - **Contrast is tested,** in `theme.rs`: text at least 7:1 and secondary text 4.5:1 on every surface, accents and the smartness colours at least 3:1, in both themes. The light theme's secondary text is darker than the recipe's 70%, which fell short on pressed widgets.
@@ -31,11 +38,14 @@ Why not B: it hides the rules while a run plays. Why not C: the most code (`egui
 
 ## Icons
 - **App icon (done):** generated from `assets/logo/`. The window icon is set in `identity.rs`, except on macOS, where the bundle's icon must win in the Dock.
-- **UI icons (planned):** `egui_material_icons` (an icon font, no SVG loader needed). Lucide SVGs through a copy of fastframe's `icons!` macro are the alternative if we want its outline style; that needs `egui_extras` with `svg`.
+- **UI icons (done):** `egui_material_icons`, an icon font registered behind Inter, so no SVG loader is needed. Lucide SVGs through a copy of fastframe's `icons!` macro remain the alternative for an outline style; that needs `egui_extras` with `svg`.
+- **In-app logo (done):** the toolbar draws `assets/icons/icon-32.png`, rendered from the 3x3 variant that stays legible at that size.
 
 ## Identity and installation
 - **Done:** one ID, `io.github.riccardogabellone.GeneticAlgo`, for the Wayland app id, the `.desktop` file name, its `Icon` and `StartupWMClass` (a test checks they agree). Release builds on Windows open no console; `build.rs` embeds the `.ico` in the executable.
-- **Planned:** `cargo-packager` for deb, AppImage, msi/nsis, app and dmg from one config, and a GitHub Actions release on `v*` tags building on Linux (ubuntu-22.04, for an older glibc floor), Windows and macOS, with `checksums.txt` and build provenance. Fallback if cargo-packager stalls (no release since late 2025): cargo-deb, a short macOS bundle script after ZapFast's, cargo-wix. Later: signing (Apple Developer ID, Azure Artifact Signing), Flathub, winget, Homebrew. Until then, macOS Gatekeeper and Windows SmartScreen warn on first launch.
+- **Done:** `cargo-packager` builds `.deb` and `.AppImage` on Linux (ubuntu-22.04, for an older glibc floor), NSIS and MSI installers plus a portable zip on Windows, and a `.dmg` on macOS. A `v*` tag publishes them with `checksums.txt` and build provenance; pull requests that touch packaging build them without publishing. The packages ship the desktop entry, AppStream metadata and icons named after the ID, because cargo-packager's generated ones are named after the binary. CI builds on all three systems and requires the Windows icon to be embedded. Details: [packaging/README.md](../packaging/README.md).
+- **Fallback** if cargo-packager stalls (no release since late 2025): cargo-deb, a short macOS bundle script after ZapFast's, cargo-wix.
+- **Later:** signing (Apple Developer ID, Azure Artifact Signing), Flathub, winget, Homebrew. Until then, macOS Gatekeeper and Windows SmartScreen warn on first launch.
 
 ## Dependencies and the egui version
 The UI is on egui / eframe 0.37. Before adding an egui crate, check its egui requirement on crates.io; a crate built for another egui version brings a second, incompatible copy of egui.
@@ -43,8 +53,8 @@ The UI is on egui / eframe 0.37. Before adding an egui crate, check its egui req
 | Crate | egui | Use |
 |---|---|---|
 | egui_plot 0.38 | 0.37 | charts (in use; has `Line::gradient_color` and `Line::fill`) |
-| egui_material_icons 0.9 | 0.37 | UI icons (planned) |
-| egui-notify 0.24 | 0.37 | toasts (planned) |
+| egui_material_icons 0.9 | 0.37 | UI icons (in use) |
+| egui-notify 0.24 | 0.37 | toasts (in use) |
 | egui_tiles 0.18 | 0.37 | resizable panes, only if layout A proves limiting |
 | egui_dock 0.21 | 0.36 | not usable yet |
 | catppuccin-egui 5.7 | 0.33 | stale: copy hex values instead |
