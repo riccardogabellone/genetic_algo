@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use genetic_algo::{
     config::{Config, MAX_SMARTNESS},
     individual::Gender,
+    leadership::{Civics, MAX_AGGRESSION},
     simulation::{Outcome, Simulation},
     world::{Cell, Position, World},
 };
@@ -48,6 +49,11 @@ fn check_individuals(simulation: &Simulation) {
         }
         assert!((0.0..=1.0).contains(&individual.reproduction));
         assert!((1..=config.max_speed).contains(&individual.speed));
+        let civics = &individual.civics;
+        assert!((0.0..=MAX_AGGRESSION).contains(&civics.policy.aggression));
+        assert!((0.0..=1.0).contains(&civics.policy.appetite));
+        assert!(civics.terms_served() <= config.max_terms);
+        assert!(civics.memories().len() <= config.max_memory);
     }
     assert_eq!(seen, simulation.latest().population);
 }
@@ -271,7 +277,42 @@ fn invariants_hold_under_extreme_rules() {
             ..Config::for_size(16, 16)
         },
     ];
-    for config in extremes.into_iter().chain(new_rules).chain(fights) {
+    let leaders = [
+        Config {
+            leaders_enabled: true,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            leaders_enabled: true,
+            election_interval: 1,
+            max_terms: 1,
+            ballot_size: 64,
+            max_memory: 64,
+            leader_influence: 1.0,
+            mutation_rate: 1.0,
+            policy_mutation_step: 1.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            leaders_enabled: true,
+            contest_fight_chance: 1.0,
+            random_fight_chance: 1.0,
+            leader_influence: 1.0,
+            ..Config::for_size(16, 16)
+        },
+        Config {
+            leaders_enabled: true,
+            max_memory: 0,
+            leader_influence: 0.0,
+            ..Config::for_size(4, 4)
+        },
+    ];
+    for config in extremes
+        .into_iter()
+        .chain(new_rules)
+        .chain(fights)
+        .chain(leaders)
+    {
         run_checked(config, 3, 150);
     }
 }
@@ -388,6 +429,7 @@ fn the_target_counts_only_for_a_real_population() {
         lifespan: 90,
         speed: 1,
         mating_cooldown: 0,
+        civics: Civics::neutral(&Config::default()),
     };
     let config = Config {
         max_ticks: 1_000,

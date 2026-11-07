@@ -3,10 +3,14 @@
 
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use genetic_algo::{
+    config::Config,
     individual::{Gender, Individual},
+    leadership::Civics,
     render::palette::{self, Rgb, appearance},
     world::{Cell, Position, World},
 };
+
+const LEADER_RING: Color32 = Color32::from_rgb(255, 230, 120);
 
 fn color((red, green, blue): Rgb) -> Color32 {
     Color32::from_rgb(red, green, blue)
@@ -51,7 +55,7 @@ impl MapLayout {
     }
 }
 
-pub fn show(ui: &mut egui::Ui, world: &World) {
+pub fn show(ui: &mut egui::Ui, world: &World, leader: Option<u64>) {
     let (area, response) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
     let layout = MapLayout::fit(area, world.width(), world.height());
     let painter = ui.painter_at(area);
@@ -62,7 +66,11 @@ pub fn show(ui: &mut egui::Ui, world: &World) {
     );
     painter.rect_filled(map_rect, 0.0, color(palette::BACKGROUND));
     for (position, cell) in world.iter() {
-        draw_cell(&painter, layout.cell_rect(position), cell);
+        let rect = layout.cell_rect(position);
+        draw_cell(&painter, rect, cell);
+        if matches!(cell, Cell::Individual(individual) if Some(individual.id) == leader) {
+            draw_leader_ring(&painter, rect);
+        }
     }
 
     if let Some(pointer) = response.hover_pos()
@@ -110,6 +118,12 @@ fn draw_cell(painter: &Painter, rect: Rect, cell: &Cell) {
     }
 }
 
+/// A ring around the leader, drawn over its cell so it shows at any map size.
+fn draw_leader_ring(painter: &Painter, rect: Rect) {
+    let stroke = Stroke::new((rect.width() * 0.12).max(1.5), LEADER_RING);
+    painter.circle_stroke(rect.center(), rect.width() * 0.62, stroke);
+}
+
 fn describe_cell(ui: &mut egui::Ui, position: Position, cell: &Cell) {
     let place = format!("({}, {})", position.x, position.y);
     match cell {
@@ -148,6 +162,11 @@ fn describe_individual(ui: &mut egui::Ui, place: &str, individual: &Individual) 
         row("Fertility", format!("{:.2}", individual.reproduction));
         row("Speed", individual.speed.to_string());
         row("Health", individual.health.to_string());
+        let civics = &individual.civics;
+        row("Aggression", format!("{:.2}", civics.policy.aggression));
+        row("Appetite", format!("{:.2}", civics.policy.appetite));
+        row("Times elected", civics.terms_served().to_string());
+        row("Elections recalled", civics.memories().len().to_string());
         row(
             "Age",
             format!("{} / {}", individual.age, individual.lifespan),
@@ -178,6 +197,7 @@ pub fn legend(ui: &mut egui::Ui) {
             lifespan: 1,
             speed: 1,
             mating_cooldown: 0,
+            civics: Civics::neutral(&Config::default()),
         }))
     };
     ui.horizontal_wrapped(|ui| {
@@ -188,6 +208,11 @@ pub fn legend(ui: &mut egui::Ui) {
         sample(ui, &Cell::Food, "Food");
         sample(ui, &Cell::Wall, "Wall");
         sample(ui, &Cell::Hazard, "Hazard");
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
+        ui.painter()
+            .rect_filled(rect, 2.0, color(palette::BACKGROUND));
+        draw_leader_ring(ui.painter(), rect.shrink(2.0));
+        ui.label("Leader");
     });
 }
 

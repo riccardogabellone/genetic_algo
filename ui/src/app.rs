@@ -5,7 +5,7 @@ use std::time::Duration;
 use eframe::egui::{self, Color32, Key, Slider, TextEdit};
 
 use crate::{
-    charts,
+    charts::{self, Panels},
     controller::{Controller, Preset},
     map_view,
 };
@@ -56,7 +56,8 @@ impl App {
             .show(ui, |ui| self.stats_and_charts(ui));
         egui::CentralPanel::default().show(ui, |ui| {
             map_view::legend(ui);
-            map_view::show(ui, self.controller.simulation().world());
+            let simulation = self.controller.simulation();
+            map_view::show(ui, simulation.world(), simulation.leadership().leader());
         });
 
         if self.controller.is_running() {
@@ -205,6 +206,30 @@ impl App {
         );
 
         ui.add_space(4.0);
+        ui.strong("Politics");
+        track(ui.checkbox(&mut rules.leaders, "Elect leaders"));
+        ui.add_enabled_ui(rules.leaders, |ui| {
+            track(
+                ui.add(Slider::new(&mut rules.election_interval, 1..=200).text("Term (ticks)"))
+                    .on_hover_text("Ticks between elections. A leader's death calls one at once."),
+            );
+            track(
+                ui.add(Slider::new(&mut rules.leader_influence, 0.0..=1.0).text("Influence"))
+                    .on_hover_text("Chance per turn that a follower acts on the leader's policy."),
+            );
+            track(
+                ui.add(Slider::new(&mut rules.max_terms, 1..=10).text("Max terms"))
+                    .on_hover_text("Times one individual can be elected in its life."),
+            );
+            track(
+                ui.add(Slider::new(&mut rules.memory, 0..=20).text("Memory"))
+                    .on_hover_text(
+                        "Past elections recalled at smartness 100, proportional below it.",
+                    ),
+            );
+        });
+
+        ui.add_space(4.0);
         ui.strong("Inheritance");
         track(ui.add(Slider::new(&mut rules.mutation_rate, 0.0..=1.0).text("Mutation rate")));
         track(ui.add(Slider::new(&mut rules.mutation_step, 0.0..=30.0).text("Mutation step")));
@@ -226,6 +251,7 @@ impl App {
         let simulation = controller.simulation();
         let latest = simulation.latest();
         let totals = controller.totals();
+        let config = simulation.config();
 
         egui::Grid::new("stats")
             .num_columns(4)
@@ -276,6 +302,26 @@ impl App {
                     ("Fights", totals.fights.to_string()),
                     ("Killed in fights", totals.combat.to_string()),
                 );
+                if config.leaders_enabled || totals.elections > 0 {
+                    let leader = simulation
+                        .leadership()
+                        .leader()
+                        .map_or_else(|| "none".to_owned(), |id| format!("#{id}"));
+                    let policy = simulation.leadership().policy().map_or_else(
+                        || "n/a".to_owned(),
+                        |policy| {
+                            format!(
+                                "aggr {:.2}, appetite {:.2}",
+                                policy.aggression, policy.appetite
+                            )
+                        },
+                    );
+                    row(
+                        ("Leader", leader),
+                        ("Elections", totals.elections.to_string()),
+                    );
+                    row(("Leader's policy", policy), ("", String::new()));
+                }
             });
         ui.separator();
 
@@ -285,11 +331,20 @@ impl App {
             .then_some(controller.rules.target);
         let show_speed =
             controller.rules.max_speed > 1 || latest.mean_speed.is_some_and(|speed| speed > 1.0);
-        let config = simulation.config();
         let show_innate = config.contest_fight_chance > 0.0
             || config.random_fight_chance > 0.0
             || totals.fights > 0;
-        charts::show(ui, simulation.history(), target, show_speed, show_innate);
+        let show_policy = config.leaders_enabled;
+        charts::show(
+            ui,
+            simulation.history(),
+            target,
+            Panels {
+                speed: show_speed,
+                innate: show_innate,
+                policy: show_policy,
+            },
+        );
     }
 }
 
@@ -358,9 +413,6 @@ mod tests {
     #[test]
     fn running_requests_another_frame_and_pausing_does_not() {
         let (mut app, context) = app();
-        frame(&mut app, &context, Vec::new());
-        frame(&mut app, &context, Vec::new());
-        let idle = frame(&mut app, &context, Vec::new());
         let delay = |output: &egui::FullOutput| {
             output
                 .viewport_output
@@ -368,7 +420,11 @@ mod tests {
                 .next()
                 .map_or(Duration::MAX, |viewport| viewport.repaint_delay)
         };
-        assert!(delay(&idle) > Duration::from_secs(1));
+        // Short animations such as a scrollbar fading out may take a few frames, but a
+        // paused window must then go idle instead of burning CPU forever.
+        let settled = (0..300)
+            .any(|_| delay(&frame(&mut app, &context, Vec::new())) > Duration::from_secs(1));
+        assert!(settled);
 
         app.controller.toggle_running();
         let running = frame(&mut app, &context, Vec::new());
@@ -437,6 +493,7 @@ mod tests {
             rules.random_fights = fights;
             rules.fight_damage = hit;
             rules.fight_smartness_loss = loss;
+            rules.leaders = fights > 0.0;
             app.controller.apply_rules();
             assert_eq!(app.controller.error(), None);
             frame(&mut app, &context, Vec::new());

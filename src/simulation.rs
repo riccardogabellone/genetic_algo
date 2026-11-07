@@ -6,6 +6,7 @@ use crate::{
     behavior::{Action, decide},
     config::{Config, ConfigError, MAX_SMARTNESS},
     individual::{DeathCause, Gender, Individual},
+    leadership::Leadership,
     sampling::stochastic_round,
     stats::{TickEvents, TickStats},
     world::{Cell, Position, World},
@@ -24,6 +25,7 @@ pub struct Simulation {
     rng: StdRng,
     next_id: u64,
     history: Vec<TickStats>,
+    leadership: Leadership,
 }
 
 /// The running costs of a big brain and of fast legs.
@@ -46,6 +48,7 @@ impl Simulation {
             rng: StdRng::seed_from_u64(seed),
             next_id: 0,
             history: Vec::new(),
+            leadership: Leadership::default(),
             config,
         };
         simulation.populate();
@@ -63,6 +66,7 @@ impl Simulation {
             .max()
             .unwrap_or(0);
         self.world = world;
+        self.leadership = Leadership::default();
         self.history.clear();
         self.record(TickEvents::default());
         self
@@ -79,8 +83,15 @@ impl Simulation {
         if (config.width, config.height) != (self.config.width, self.config.height) {
             return Err(ConfigError("the map size cannot change mid-run".to_owned()));
         }
+        if !config.leaders_enabled {
+            self.leadership = Leadership::default();
+        }
         self.config = config;
         Ok(())
+    }
+
+    pub fn leadership(&self) -> &Leadership {
+        &self.leadership
     }
 
     pub fn world(&self) -> &World {
@@ -127,10 +138,12 @@ impl Simulation {
     /// One tick: everyone alive at the start acts exactly once, in a fresh random
     /// order so no corner of the map is favoured, then food regrows.
     pub fn step(&mut self) {
+        let mut events = TickEvents::default();
+        self.hold_election_if_due(&mut events);
+
         let mut turn_order: Vec<Position> = self.world.individuals().map(|(p, _)| p).collect();
         turn_order.shuffle(&mut self.rng);
 
-        let mut events = TickEvents::default();
         for position in turn_order {
             self.take_turn(position, &mut events);
         }
@@ -138,6 +151,17 @@ impl Simulation {
         let tick = self.latest().tick + 1;
         self.regrow_food(tick);
         self.record(events);
+    }
+
+    fn hold_election_if_due(&mut self, events: &mut TickEvents) {
+        let tick = self.latest().tick;
+        if self.leadership.election_due(tick, &self.config)
+            && self
+                .leadership
+                .hold_election(&mut self.world, tick, &self.config, &mut self.rng)
+        {
+            events.elections += 1;
+        }
     }
 
     /// Nobody else can move or remove an individual, and nothing can enter its cell while
@@ -150,12 +174,14 @@ impl Simulation {
         // A fatal hit from another individual's turn takes effect here.
         if individual.health == 0 {
             events.record_death(DeathCause::Combat);
+            self.leadership.record_death(individual.id);
             return;
         }
         let action = decide(
             &individual,
             position,
             &self.world,
+            self.leadership.policy(),
             &self.config,
             &mut self.rng,
         );
@@ -210,6 +236,7 @@ impl Simulation {
         match cause {
             Some(cause) => {
                 events.record_death(cause);
+                self.leadership.record_death(individual.id);
                 // A meal is consumed even if it was the fatal one.
                 if ate {
                     self.world.set(destination, Cell::Empty);
@@ -285,7 +312,8 @@ impl Simulation {
 
     fn record(&mut self, events: TickEvents) {
         let tick = self.history.last().map_or(0, |latest| latest.tick + 1);
-        self.history
-            .push(TickStats::measure(tick, &self.world, events));
+        let mut stats = TickStats::measure(tick, &self.world, events);
+        stats.leader = self.leadership.leader();
+        self.history.push(stats);
     }
 }

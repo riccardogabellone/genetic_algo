@@ -4,6 +4,7 @@ use rand::RngExt;
 
 use crate::{
     config::{Config, MAX_SMARTNESS},
+    leadership::Civics,
     sampling::triangular,
 };
 
@@ -49,6 +50,7 @@ pub struct Individual {
     pub lifespan: u32,
     pub speed: usize,
     pub mating_cooldown: u32,
+    pub civics: Civics,
 }
 
 impl Individual {
@@ -66,6 +68,7 @@ impl Individual {
             lifespan: rng.random_range(config.min_lifespan..=config.max_lifespan),
             speed: config.initial_speed,
             mating_cooldown: 0,
+            civics: Civics::founder(config, rng),
         }
     }
 
@@ -106,6 +109,7 @@ impl Individual {
             lifespan: rng.random_range(config.min_lifespan..=config.max_lifespan),
             speed: inherit_speed(parent_a.speed, parent_b.speed, config, rng),
             mating_cooldown: 0,
+            civics: Civics::inherited(parent_a, parent_b, config, rng),
         }
     }
 
@@ -143,13 +147,13 @@ fn inherit_speed(speed_a: usize, speed_b: usize, config: &Config, rng: &mut impl
     mutated.clamp(1, config.max_speed)
 }
 
-fn inherit(value_a: f32, value_b: f32, rng: &mut impl RngExt) -> f32 {
+pub(crate) fn inherit(value_a: f32, value_b: f32, rng: &mut impl RngExt) -> f32 {
     triangular(rng, value_a, f32::midpoint(value_a, value_b), value_b)
 }
 
 /// Unbiased: the step is symmetric around zero, so mutation alone does not push the
 /// trait up or down, except for the reflection caused by clamping at the scale ends.
-fn mutate(value: f32, step: f32, upper: f32, rate: f32, rng: &mut impl RngExt) -> f32 {
+pub(crate) fn mutate(value: f32, step: f32, upper: f32, rate: f32, rng: &mut impl RngExt) -> f32 {
     if rng.random::<f32>() >= rate {
         return value;
     }
@@ -168,6 +172,14 @@ mod tests {
             innate_smartness: smartness,
             ..Individual::founder(0, Gender::Male, config, &mut rng)
         }
+    }
+
+    /// Every birth and death allocates one of these. Measured on a 28-core machine with
+    /// the 8 evolution tests in parallel: 72 bytes takes 6.7 seconds, 88 bytes takes 46,
+    /// nearly all of it waiting on glibc's allocator lock. Keep rare data behind a `Box`.
+    #[test]
+    fn individuals_stay_small_enough_to_avoid_allocator_contention() {
+        assert!(std::mem::size_of::<Individual>() <= 72);
     }
 
     #[test]

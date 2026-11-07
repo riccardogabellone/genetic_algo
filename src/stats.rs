@@ -2,6 +2,7 @@
 
 use crate::{
     individual::{DeathCause, Gender},
+    leadership::Policy,
     world::World,
 };
 
@@ -25,6 +26,7 @@ pub struct TickEvents {
     pub hazard: u32,
     pub combat: u32,
     pub fights: u32,
+    pub elections: u32,
 }
 
 impl TickEvents {
@@ -51,6 +53,7 @@ impl TickEvents {
         self.hazard += other.hazard;
         self.combat += other.combat;
         self.fights += other.fights;
+        self.elections += other.elections;
     }
 }
 
@@ -64,6 +67,10 @@ pub struct TickStats {
     pub smartness: Option<SmartnessSummary>,
     /// `None` once the population is extinct.
     pub mean_speed: Option<f32>,
+    /// The population's average policy. `None` once extinct.
+    pub mean_policy: Option<Policy>,
+    /// The id of the current leader, if there is one.
+    pub leader: Option<u64>,
     pub max_generation: u32,
     pub events: TickEvents,
 }
@@ -73,6 +80,7 @@ impl TickStats {
         let (mut males, mut females, mut max_generation, mut total_speed) = (0, 0, 0, 0);
         let (mut sum, mut min, mut max) = (0.0_f64, f32::INFINITY, f32::NEG_INFINITY);
         let mut innate_sum = 0.0_f64;
+        let (mut aggression_sum, mut appetite_sum) = (0.0_f64, 0.0_f64);
         for (_, individual) in world.individuals() {
             match individual.gender {
                 Gender::Male => males += 1,
@@ -81,6 +89,8 @@ impl TickStats {
             total_speed += individual.speed;
             sum += f64::from(individual.smartness);
             innate_sum += f64::from(individual.innate_smartness);
+            aggression_sum += f64::from(individual.civics.policy.aggression);
+            appetite_sum += f64::from(individual.civics.policy.appetite);
             min = min.min(individual.smartness);
             max = max.max(individual.smartness);
             max_generation = max_generation.max(individual.generation);
@@ -98,6 +108,11 @@ impl TickStats {
                 innate_mean: (innate_sum / population as f64) as f32,
             }),
             mean_speed: (population > 0).then(|| total_speed as f32 / population as f32),
+            mean_policy: (population > 0).then(|| Policy {
+                aggression: (aggression_sum / population as f64) as f32,
+                appetite: (appetite_sum / population as f64) as f32,
+            }),
+            leader: None,
             max_generation,
             events,
         }

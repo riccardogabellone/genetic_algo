@@ -149,3 +149,50 @@ fn the_fighting_preset_reaches_the_simulation_and_the_counters_show() {
     assert!(harness.query_by_label("Killed in fights").is_some());
     assert!(harness.query_by_label("Fights").is_some());
 }
+
+#[test]
+fn the_leaders_preset_elects_someone_and_shows_the_leader() {
+    let mut harness = harness();
+    assert!(
+        harness.query_by_label("Leader").is_some(),
+        "the map legend names it"
+    );
+    assert!(harness.query_by_label("Mean policy").is_none());
+    click(&mut harness, "Leaders");
+    assert!(
+        harness
+            .state()
+            .controller
+            .simulation()
+            .config()
+            .leaders_enabled
+    );
+    assert!(harness.query_by_label("Mean policy").is_some());
+
+    for _ in 0..10 {
+        click(&mut harness, "Step");
+    }
+    let simulation = harness.state().controller.simulation();
+    assert!(simulation.leadership().leader().is_some());
+    assert!(harness.query_by_label("Elections").is_some());
+}
+
+#[test]
+fn elect_leaders_checkbox_turns_the_rule_on_and_off() {
+    let mut harness = harness();
+    click(&mut harness, "Elect leaders");
+    click(&mut harness, "Step");
+    assert!(
+        harness
+            .state()
+            .controller
+            .simulation()
+            .config()
+            .leaders_enabled
+    );
+
+    click(&mut harness, "Elect leaders");
+    let simulation = harness.state().controller.simulation();
+    assert!(!simulation.config().leaders_enabled);
+    assert_eq!(simulation.leadership().leader(), None);
+}

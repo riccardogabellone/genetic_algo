@@ -59,6 +59,17 @@ Tutti i valori numerici sono in `src/config.rs`. Tra parentesi i default.
 - chi colpisce perde smartness attuale (`--fight-smartness-loss`, 5), fino a 0
 - **la perdita non si eredita**: ogni Individuo ha una smartness innata, ereditabile, e una attuale, che guida il comportamento e che i combattimenti abbassano
 
+### Leader (spenti di default, `--leaders`)
+- ogni Individuo ha una **politica** ereditabile: aggressività (moltiplica la probabilità di combattere) e appetito (la soglia di "health" sotto cui cerca cibo)
+- ogni `--election-interval` tick (30), o subito se il leader muore, gli adulti votano tra 5 candidati casuali, più il leader in carica se può ricandidarsi
+- nessuno vota per sé; ogni votante sceglie la politica più vicina alla propria, corretta dai ricordi
+- **memoria** (`--memory`, 5): a fine mandato ogni votante ricorda se la sua "health" è salita o scesa e se il suo voto era andato al vincitore. Quanti mandati ricorda è proporzionale alla smartness attuale
+  - mandato andato bene: favorisce politiche simili a quella del vincitore; andato male: le sfavorisce
+  - chi aveva votato un altro: un mandato andato bene lo fa ricredere, uno andato male gli dà ragione
+- **limite** (`--max-terms`, 2): nessuno può essere eletto più di due volte nella vita
+- **influenza** (`--leader-influence`, 0.5): a ogni turno un seguace agisce con probabilità 0.5 secondo la politica del leader invece che la propria
+- memorie e mandati non si ereditano
+
 ### Fine della simulazione
 La simulazione termina alla prima di queste condizioni:
 - estinzione
@@ -140,6 +151,19 @@ Fighting, over 24 runs of 20,000 ticks on 32x32. Founders are nearly random and 
 | 1 / 0 / 20 | Smart | 0 | 88.3 | 95.2 | 345 |
 
 Smartness and population are means over the surviving runs.
+
+Leaders, over 48 runs of 20,000 ticks on 32x32. Fights are over food 0.5, for no reason 0.02. Means are over the surviving runs, and "Extinct" is out of 48.
+
+| Rules | Mean aggression | Fights per individual per tick | Population | Extinct |
+|---|---|---|---|---|
+| No fights, policies but no influence | 1.01 | 0 | 644 | 1 |
+| Fights, policies but no influence | 0.56 | 0.0145 | 579 | 0 |
+| Fights, influence 0.25 | 0.67 | 0.0173 | 567 | 2 |
+| Fights, influence 0.5 | 0.79 | 0.0208 | 554 | 2 |
+| Fights, influence 1 | 1.02 | 0.0268 | 533 | 2 |
+| Fights, no policies or leaders | 1.00 | 0.0268 | 531 | 0 |
+
+Fights select against aggression, but acting on a leader's policy hides an individual's own from selection, so leaders keep a population from evolving peace. Memory had no measurable effect: at influence 1 and at 0.5, memory 0 and memory 20 land within noise of each other, for both the population and the leaders' own aggression.
 
 # Testing
 ```sh

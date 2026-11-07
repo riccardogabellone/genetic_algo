@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::sampling::Spread;
+use crate::{leadership::MAX_AGGRESSION, sampling::Spread};
 
 /// Smartness is a score in `0..=MAX_SMARTNESS`.
 pub const MAX_SMARTNESS: f32 = 100.0;
@@ -14,6 +14,10 @@ pub const MAX_TICKS: u32 = 10_000_000;
 pub const MAX_HEALTH_SCALE: u32 = 1_000_000;
 /// Upper bound on vision and speed, which set how many cells a turn may scan.
 pub const MAX_RADIUS: usize = 64;
+
+/// Upper bounds that keep an election's cost reasonable on a crowded map.
+pub const MAX_BALLOT: usize = 64;
+pub const MAX_MEMORY: usize = 64;
 
 pub const DEFAULT_WIDTH: usize = 32;
 pub const DEFAULT_HEIGHT: usize = 32;
@@ -69,6 +73,24 @@ pub struct Config {
     pub fight_damage: u32,
     /// Current smartness the attacker loses. Never inherited.
     pub fight_smartness_loss: f32,
+
+    // Leaders
+    /// Adults elect a leader whose policy followers sometimes adopt. Off by default.
+    pub leaders_enabled: bool,
+    /// Ticks between elections. A leader's death calls one at once.
+    pub election_interval: u32,
+    /// Candidates drawn at random per election, plus the incumbent if eligible.
+    pub ballot_size: usize,
+    /// How many times one individual can be elected in its life.
+    pub max_terms: u32,
+    /// Chance per turn that a follower acts on the leader's policy instead of its own.
+    pub leader_influence: f32,
+    /// Past elections recalled at maximum smartness, proportional below it.
+    pub max_memory: usize,
+    pub founder_aggression: Spread,
+    pub founder_appetite: Spread,
+    /// Largest policy mutation, as a share of each scale. Happens at `mutation_rate`.
+    pub policy_mutation_step: f32,
 
     // Life cycle
     pub min_lifespan: u32,
@@ -144,6 +166,24 @@ impl Config {
             fight_damage: 10,
             fight_smartness_loss: 5.0,
 
+            leaders_enabled: false,
+            election_interval: 30,
+            ballot_size: 5,
+            max_terms: 2,
+            leader_influence: 0.5,
+            max_memory: 5,
+            founder_aggression: Spread {
+                min: 0.0,
+                mode: 1.0,
+                max: 2.0,
+            },
+            founder_appetite: Spread {
+                min: 0.4,
+                mode: 0.7,
+                max: 1.0,
+            },
+            policy_mutation_step: 0.1,
+
             min_lifespan: 50,
             max_lifespan: 100,
             maturity_age: 5,
@@ -159,6 +199,7 @@ impl Config {
         self.validate_world()?;
         self.validate_traits()?;
         self.validate_fighting()?;
+        self.validate_leaders()?;
         self.validate_life_cycle()
     }
 
@@ -245,6 +286,35 @@ impl Config {
         require(
             (0.0..=MAX_SMARTNESS).contains(&self.fight_smartness_loss),
             "fight_smartness_loss must be within the smartness scale",
+        )
+    }
+
+    fn validate_leaders(&self) -> Result<(), ConfigError> {
+        require(
+            self.election_interval > 0,
+            "election_interval must be positive",
+        )?;
+        require(
+            self.ballot_size > 0 && self.ballot_size <= MAX_BALLOT,
+            "ballot_size is out of range",
+        )?;
+        require(self.max_terms > 0, "max_terms must be positive")?;
+        require(
+            (0.0..=1.0).contains(&self.leader_influence),
+            "leader_influence must be within 0..=1",
+        )?;
+        require(self.max_memory <= MAX_MEMORY, "max_memory is too large")?;
+        require(
+            within(self.founder_aggression, 0.0, MAX_AGGRESSION),
+            "invalid founder_aggression",
+        )?;
+        require(
+            within(self.founder_appetite, 0.0, 1.0),
+            "invalid founder_appetite",
+        )?;
+        require(
+            (0.0..=1.0).contains(&self.policy_mutation_step),
+            "policy_mutation_step must be within 0..=1",
         )
     }
 
@@ -381,6 +451,16 @@ mod tests {
         assert!(rejects(|c| c.contest_fight_chance = 1.5));
         assert!(rejects(|c| c.random_fight_chance = f32::NAN));
         assert!(rejects(|c| c.fight_damage = 0));
+        assert!(rejects(|c| c.election_interval = 0));
+        assert!(rejects(|c| c.ballot_size = 0));
+        assert!(rejects(|c| c.ballot_size = MAX_BALLOT + 1));
+        assert!(rejects(|c| c.max_terms = 0));
+        assert!(rejects(|c| c.leader_influence = 1.5));
+        assert!(rejects(|c| c.leader_influence = f32::NAN));
+        assert!(rejects(|c| c.max_memory = MAX_MEMORY + 1));
+        assert!(rejects(|c| c.founder_aggression.max = MAX_AGGRESSION + 1.0));
+        assert!(rejects(|c| c.founder_appetite.max = 1.5));
+        assert!(rejects(|c| c.policy_mutation_step = -0.1));
         assert!(rejects(|c| c.fight_damage = c.max_health + 1));
         assert!(rejects(|c| c.fight_smartness_loss = -1.0));
         assert!(rejects(|c| c.fight_smartness_loss = MAX_SMARTNESS + 1.0));

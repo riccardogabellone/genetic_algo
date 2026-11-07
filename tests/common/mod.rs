@@ -3,6 +3,7 @@
 use genetic_algo::{
     config::Config,
     individual::{Gender, Individual},
+    leadership::Civics,
     simulation::Simulation,
     world::{Position, World},
 };
@@ -40,6 +41,7 @@ pub fn adult(id: u64, gender: Gender, smartness: f32) -> Individual {
         lifespan: 90,
         speed: 1,
         mating_cooldown: 0,
+        civics: Civics::neutral(&Config::default()),
     }
 }
 

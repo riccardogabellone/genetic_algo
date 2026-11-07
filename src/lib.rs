@@ -7,6 +7,7 @@
 pub mod behavior;
 pub mod config;
 pub mod individual;
+pub mod leadership;
 pub mod render;
 pub mod sampling;
 pub mod simulation;

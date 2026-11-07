@@ -55,6 +55,21 @@ struct Args {
     /// Current smartness the attacker loses; not inherited [default: from the rules].
     #[arg(long)]
     fight_smartness_loss: Option<f32>,
+    /// Adults elect a leader, whose policy followers sometimes adopt.
+    #[arg(long)]
+    leaders: bool,
+    /// Ticks between elections [default: from the rules].
+    #[arg(long)]
+    election_interval: Option<u32>,
+    /// Chance per turn that a follower acts on the leader's policy [default: from the rules].
+    #[arg(long)]
+    leader_influence: Option<f32>,
+    /// Times one individual can be elected in its life [default: from the rules].
+    #[arg(long)]
+    max_terms: Option<u32>,
+    /// Past elections recalled at maximum smartness [default: from the rules].
+    #[arg(long)]
+    memory: Option<usize>,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -105,6 +120,19 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
     }
     if let Some(loss) = args.fight_smartness_loss {
         config.fight_smartness_loss = loss;
+    }
+    config.leaders_enabled = args.leaders;
+    if let Some(interval) = args.election_interval {
+        config.election_interval = interval;
+    }
+    if let Some(influence) = args.leader_influence {
+        config.leader_influence = influence;
+    }
+    if let Some(terms) = args.max_terms {
+        config.max_terms = terms;
+    }
+    if let Some(memory) = args.memory {
+        config.max_memory = memory;
     }
     if let Some(ticks) = args.ticks {
         config.max_ticks = ticks;
@@ -223,6 +251,9 @@ fn print_summary(
         totals.old_age,
         totals.hazard
     )?;
+    if totals.elections > 0 {
+        writeln!(out, "elections {}", totals.elections)?;
+    }
     if totals.fights > 0 {
         writeln!(
             out,

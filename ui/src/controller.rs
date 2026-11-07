@@ -36,6 +36,11 @@ pub struct Rules {
     pub random_fights: f32,
     pub fight_damage: u32,
     pub fight_smartness_loss: f32,
+    pub leaders: bool,
+    pub election_interval: u32,
+    pub leader_influence: f32,
+    pub max_terms: u32,
+    pub memory: usize,
     pub stop_at_target: bool,
     pub target: f32,
 }
@@ -58,6 +63,11 @@ impl Default for Rules {
             random_fights: defaults.random_fight_chance,
             fight_damage: defaults.fight_damage,
             fight_smartness_loss: defaults.fight_smartness_loss,
+            leaders: defaults.leaders_enabled,
+            election_interval: defaults.election_interval,
+            leader_influence: defaults.leader_influence,
+            max_terms: defaults.max_terms,
+            memory: defaults.max_memory,
             stop_at_target: true,
             target: defaults.target_smartness,
         }
@@ -85,6 +95,11 @@ impl Rules {
         config.random_fight_chance = self.random_fights;
         config.fight_damage = self.fight_damage;
         config.fight_smartness_loss = self.fight_smartness_loss;
+        config.leaders_enabled = self.leaders;
+        config.election_interval = self.election_interval;
+        config.leader_influence = self.leader_influence;
+        config.max_terms = self.max_terms;
+        config.max_memory = self.memory;
         // The scale's maximum is unreachable in practice, because mutation keeps some
         // individuals below it. That is how "never stop for the target" is expressed.
         config.target_smartness = if self.stop_at_target {
@@ -103,15 +118,17 @@ pub enum Preset {
     AllRules,
     TwoStableOutcomes,
     Fighting,
+    Leaders,
 }
 
 impl Preset {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Default,
         Self::VisionAndCost,
         Self::AllRules,
         Self::TwoStableOutcomes,
         Self::Fighting,
+        Self::Leaders,
     ];
 
     pub fn label(self) -> &'static str {
@@ -121,6 +138,7 @@ impl Preset {
             Self::AllRules => "All rules",
             Self::TwoStableOutcomes => "Two outcomes",
             Self::Fighting => "Fighting",
+            Self::Leaders => "Leaders",
         }
     }
 
@@ -130,6 +148,7 @@ impl Preset {
             Self::VisionAndCost => "Vision 5, smartness cost 2. Steady, reaches the target.",
             Self::AllRules => "Adds evolving speed. Fast, but fragile on small maps.",
             Self::Fighting => "Fights over food, and a few for no reason.",
+            Self::Leaders => "Elected leaders in a world with fights, so their aggression matters.",
             Self::TwoStableOutcomes => {
                 "Vision 5, smartness cost 8. Stays dumb from a normal start; \
                  stays smart with \"Start smart\" enabled."
@@ -151,6 +170,12 @@ impl Preset {
                 vision: 5,
                 max_speed: 4,
                 speed_cost: 1.0,
+                ..base
+            },
+            Self::Leaders => Rules {
+                leaders: true,
+                contest_fights: 0.5,
+                random_fights: 0.02,
                 ..base
             },
             Self::Fighting => Rules {
@@ -515,6 +540,23 @@ mod tests {
         assert_eq!(config.random_fight_chance, 0.25);
         assert_eq!(config.fight_damage, 40);
         assert_eq!(config.fight_smartness_loss, 12.0);
+    }
+
+    #[test]
+    fn leader_edits_apply_to_the_running_simulation() {
+        let mut controller = controller();
+        controller.rules.leaders = true;
+        controller.rules.election_interval = 12;
+        controller.rules.leader_influence = 0.9;
+        controller.rules.max_terms = 3;
+        controller.rules.memory = 7;
+        controller.apply_rules();
+        let config = controller.simulation().config();
+        assert!(config.leaders_enabled);
+        assert_eq!(config.election_interval, 12);
+        assert_eq!(config.leader_influence, 0.9);
+        assert_eq!(config.max_terms, 3);
+        assert_eq!(config.max_memory, 7);
     }
 
     #[test]

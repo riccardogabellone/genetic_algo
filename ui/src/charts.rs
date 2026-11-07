@@ -47,17 +47,19 @@ fn base_plot(id: &str, height: f32) -> Plot<'static> {
         .include_y(0.0)
 }
 
-pub fn show(
-    ui: &mut egui::Ui,
-    history: &[TickStats],
-    target: Option<f32>,
-    show_speed: bool,
-    show_innate: bool,
-) {
+/// Which optional parts of the charts are worth showing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Panels {
+    pub speed: bool,
+    pub innate: bool,
+    pub policy: bool,
+}
+
+pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panels: Panels) {
     let points = thin(history);
-    let panels = if show_speed { 3.0 } else { 2.0 };
-    let headings = panels * 26.0;
-    let height = ((ui.available_height() - headings) / panels).max(70.0);
+    let count = 2.0 + f32::from(u8::from(panels.speed)) + f32::from(u8::from(panels.policy));
+    let headings = count * 26.0;
+    let height = ((ui.available_height() - headings) / count).max(70.0);
 
     ui.strong("Smartness");
     base_plot("smartness_plot", height)
@@ -80,7 +82,7 @@ pub fn show(
                     .color(SERIES)
                     .width(2.0),
             );
-            if show_innate {
+            if panels.innate {
                 plot.line(
                     series("Innate mean", &points, |s| {
                         s.smartness.map(|v| f64::from(v.innate_mean))
@@ -107,7 +109,30 @@ pub fn show(
         );
     });
 
-    if show_speed {
+    if panels.policy {
+        ui.strong("Mean policy");
+        base_plot("policy_plot", height)
+            .include_y(1.0)
+            .legend(Legend::default().position(Corner::LeftTop))
+            .show(ui, |plot| {
+                plot.line(
+                    series("Aggression", &points, |s| {
+                        s.mean_policy.map(|policy| f64::from(policy.aggression))
+                    })
+                    .color(SERIES)
+                    .width(2.0),
+                );
+                plot.line(
+                    series("Appetite", &points, |s| {
+                        s.mean_policy.map(|policy| f64::from(policy.appetite))
+                    })
+                    .color(TARGET)
+                    .width(2.0),
+                );
+            });
+    }
+
+    if panels.speed {
         ui.strong("Mean speed");
         base_plot("speed_plot", height)
             .include_y(1.0)

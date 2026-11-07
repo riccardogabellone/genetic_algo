@@ -82,6 +82,24 @@ impl World {
         }
     }
 
+    /// All individuals in row order, for changes that touch everyone at once.
+    pub fn individuals_mut(&mut self) -> impl Iterator<Item = (Position, &mut Individual)> {
+        let width = self.width;
+        self.cells
+            .iter_mut()
+            .enumerate()
+            .filter_map(move |(index, cell)| match cell {
+                Cell::Individual(individual) => Some((
+                    Position {
+                        x: index % width,
+                        y: index / width,
+                    },
+                    individual.as_mut(),
+                )),
+                _ => None,
+            })
+    }
+
     pub fn individual_mut(&mut self, position: Position) -> Option<&mut Individual> {
         let index = self.index(position);
         match &mut self.cells[index] {

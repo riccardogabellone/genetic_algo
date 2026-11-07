@@ -216,3 +216,58 @@ fn final_innate_and_current(rules: &Config) -> (f32, f32) {
     }
     (innate / SEEDS as f32, current / SEEDS as f32)
 }
+
+/// Mean aggression at the end, across the seeds that survive.
+fn final_aggression(rules: &Config) -> f32 {
+    let mut values = Vec::new();
+    for seed in 0..SEEDS {
+        let config = Config {
+            max_ticks: POLICY_TICKS,
+            target_smartness: 100.0,
+            ..rules.clone()
+        };
+        let mut simulation = Simulation::new(config, seed).unwrap();
+        simulation.run_to_end();
+        values.extend(
+            simulation
+                .latest()
+                .mean_policy
+                .map(|policy| policy.aggression),
+        );
+    }
+    assert!(!values.is_empty(), "at least one run must survive");
+    values.iter().sum::<f32>() / values.len() as f32
+}
+
+const POLICY_TICKS: u32 = 12_000;
+
+/// Aggression only drifts without fights, and is selected against with them. When
+/// followers act on a leader's policy instead, their own aggression is rarely expressed,
+/// so selection cannot see it: leaders keep the population from evolving peace.
+#[test]
+fn fights_select_against_aggression_unless_leaders_shield_it() {
+    let policies_only = Config {
+        leaders_enabled: true,
+        leader_influence: 0.0,
+        ..Config::default()
+    };
+    let fighting = Config {
+        contest_fight_chance: 0.5,
+        random_fight_chance: 0.02,
+        ..policies_only.clone()
+    };
+    let followers = Config {
+        leader_influence: 1.0,
+        ..fighting.clone()
+    };
+    let (peaceful, free, led) = (
+        final_aggression(&policies_only),
+        final_aggression(&fighting),
+        final_aggression(&followers),
+    );
+    assert!(
+        free < peaceful - 0.2,
+        "with fights {free:.2}, without {peaceful:.2}"
+    );
+    assert!(led > free + 0.15, "led {led:.2}, free {free:.2}");
+}
