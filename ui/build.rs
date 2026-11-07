@@ -4,9 +4,15 @@
 //!
 //! The `cfg(windows)` gate is on the build machine: a Windows binary cross-compiled from
 //! Linux or macOS has no embedded icon. Release builds run on Windows.
+//!
+//! Set `REQUIRE_WINDOWS_ICON=1` to fail instead of warn when the icon cannot be embedded,
+//! as CI and release builds do.
+
+const REQUIRE_ICON: &str = "REQUIRE_WINDOWS_ICON";
 
 fn main() {
     println!("cargo:rerun-if-changed=../assets/icons/icon.ico");
+    println!("cargo:rerun-if-env-changed={REQUIRE_ICON}");
     // Both gates matter: `cfg(windows)` is the build machine (where `winresource` is
     // available), the variable is the target the binary is for.
     #[cfg(windows)]
@@ -26,9 +32,12 @@ fn embed_windows_resources() {
             "Genetic Algo: an agent-based evolution sandbox",
         );
     // A machine without a resource compiler (the Windows SDK's rc.exe, or MinGW's windres)
-    // still builds the app, just without the embedded icon. GitHub's Windows runners have
-    // the SDK, so release builds always get it.
+    // still builds the app, just without the embedded icon, unless the icon is required.
     if let Err(error) = resources.compile() {
-        println!("cargo:warning=the Windows icon was not embedded: {error}");
+        let message = format!("the Windows icon was not embedded: {error}");
+        if std::env::var(REQUIRE_ICON).as_deref() == Ok("1") {
+            panic!("{message}");
+        }
+        println!("cargo:warning={message}");
     }
 }
