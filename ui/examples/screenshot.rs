@@ -1,7 +1,7 @@
 //! Opens the real window, runs it for a while, saves a screenshot and exits.
 //! A way to check the UI's appearance without clicking through it.
 //!
-//! Usage: `cargo run -p genetic_algo_ui --example screenshot -- <out.ppm> [frames] [preset] [map_side]`
+//! Usage: `cargo run -p genetic_algo_ui --example screenshot -- <out.ppm> [frames] [preset] [map_side] [dark|light]`
 
 use std::{fs::File, io::Write as _, path::PathBuf, time::Instant};
 
@@ -58,7 +58,7 @@ fn main() -> eframe::Result {
     let mut args = std::env::args().skip(1);
     let path = PathBuf::from(
         args.next()
-            .expect("usage: screenshot <out.ppm> [frames] [preset]"),
+            .expect("usage: screenshot <out.ppm> [frames] [preset] [map_side] [dark|light]"),
     );
     let frames_left = args
         .next()
@@ -70,6 +70,11 @@ fn main() -> eframe::Result {
     let map_side = args
         .next()
         .map_or(32, |side| side.parse::<usize>().expect("map_side"));
+    let theme = match args.next().as_deref() {
+        None | Some("dark") => egui::Theme::Dark,
+        Some("light") => egui::Theme::Light,
+        Some(other) => panic!("theme must be dark or light, not {other}"),
+    };
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1360.0, 820.0]),
@@ -80,6 +85,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |creation| {
             let mut app = App::new(&creation.egui_ctx);
+            creation.egui_ctx.set_theme(theme);
             app.controller.apply_preset(Preset::ALL[preset]);
             app.controller.setup.width = map_side;
             app.controller.setup.height = map_side;

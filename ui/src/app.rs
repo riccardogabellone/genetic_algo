@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 
-use eframe::egui::{self, Color32, Key, Slider, TextEdit};
+use eframe::egui::{self, Key, Slider, TextEdit};
 use genetic_algo::leadership::TermJudgement;
 
 use crate::{
     charts::{self, Panels},
     controller::{Controller, Preset},
-    map_view,
+    map_view, theme,
 };
 
 /// Simulation time allowed per frame, which keeps a 60 fps window responsive.
@@ -16,7 +16,6 @@ const FRAME_BUDGET: Duration = Duration::from_millis(10);
 const MAX_MAP_SIDE: usize = 128;
 const MIN_MAP_SIDE: usize = 8;
 const RELIABLE_MAP_SIDE: usize = 16;
-const ERROR_COLOR: Color32 = Color32::from_rgb(255, 130, 130);
 
 pub struct App {
     pub controller: Controller,
@@ -24,8 +23,7 @@ pub struct App {
 
 impl App {
     pub fn new(context: &egui::Context) -> Self {
-        // The map has a dark background, so the whole window matches it.
-        context.set_theme(egui::Theme::Dark);
+        theme::install(context);
         Self {
             controller: Controller::new(u64::from(rand::random::<u32>())),
         }
@@ -55,11 +53,15 @@ impl App {
             .default_size(440.0)
             .min_size(300.0)
             .show(ui, |ui| self.stats_and_charts(ui));
-        egui::CentralPanel::default().show(ui, |ui| {
-            map_view::legend(ui);
-            let simulation = self.controller.simulation();
-            map_view::show(ui, simulation.world(), simulation.leadership().leader());
-        });
+        let map_frame =
+            egui::Frame::central_panel(ui.style()).fill(theme::palette(ui.ctx()).window);
+        egui::CentralPanel::default()
+            .frame(map_frame)
+            .show(ui, |ui| {
+                map_view::legend(ui);
+                let simulation = self.controller.simulation();
+                map_view::show(ui, simulation.world(), simulation.leadership().leader());
+            });
 
         if self.controller.is_running() {
             ui.ctx().request_repaint();
@@ -98,10 +100,10 @@ impl App {
                 .text("ticks/s"),
         );
         if let Some(message) = self.controller.outcome_message() {
-            ui.colored_label(Color32::from_rgb(196, 134, 30), message);
+            ui.colored_label(theme::palette(ui.ctx()).warning, message);
         }
         if let Some(error) = self.controller.error() {
-            ui.colored_label(ERROR_COLOR, error);
+            ui.colored_label(theme::palette(ui.ctx()).danger, error);
         }
     }
 
@@ -112,7 +114,10 @@ impl App {
         ui.add(Slider::new(&mut setup.width, MIN_MAP_SIDE..=MAX_MAP_SIDE).text("Width"));
         ui.add(Slider::new(&mut setup.height, MIN_MAP_SIDE..=MAX_MAP_SIDE).text("Height"));
         if setup.width.min(setup.height) < RELIABLE_MAP_SIDE {
-            ui.colored_label(ERROR_COLOR, "Maps under 16 often go extinct.");
+            ui.colored_label(
+                theme::palette(ui.ctx()).warning,
+                "Maps under 16 often go extinct.",
+            );
         }
         ui.checkbox(&mut setup.start_smart, "Start smart (85-95)");
         ui.horizontal(|ui| {

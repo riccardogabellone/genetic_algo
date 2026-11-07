@@ -6,3 +6,4 @@ pub mod charts;
 pub mod controller;
 pub mod identity;
 pub mod map_view;
+pub mod theme;
