@@ -1,3 +1,5 @@
+<img src="assets/logo/logo.svg" alt="" width="96" align="right">
+
 # genetic_algo
 
 An agent-based evolution sandbox in Rust. Individuals roam a grid freely, eat, fight, reproduce and die, and heritable traits such as smartness evolve by natural selection. Optional rules add costs, vision, evolving speed, fights and elected leaders, and every rule can be tuned live in a graphical UI.
@@ -130,6 +132,8 @@ Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a 
 The core does not depend on `render`, so a front end only needs `Simulation::step()`, `world()` and `history()`.
 
 The `ui` crate is the egui front end, kept in its own crate so the core and terminal builds do not pull in egui. `controller` holds all its run logic and draws nothing; `app`, `map_view` and `charts` only draw and report input.
+
+The app's identity lives in `ui/src/identity.rs`: its name, the ID `io.github.riccardogabellone.GeneticAlgo` and the window icon. The same ID names the Linux desktop entry in `packaging/linux/`, so the desktop matches the window to its launcher and icon. The logo is generated, not drawn: `assets/logo/` turns the source image into SVG masters, and from them the icons in `assets/icons/` (PNG sizes, Windows `.ico`, macOS `.icns`). See `assets/logo/AGENTS.md`.
 
 # Rule experiments
 Means over 8 runs of 60,000 ticks on 32x32, started from low smartness (1-5) and from high smartness (85-95).

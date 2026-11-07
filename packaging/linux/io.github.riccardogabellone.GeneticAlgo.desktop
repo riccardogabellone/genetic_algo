@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Genetic Algo
+GenericName=Evolution Sandbox
+Comment=Watch individuals evolve on a grid by natural selection
+Exec=genetic_algo_ui
+Icon=io.github.riccardogabellone.GeneticAlgo
+Terminal=false
+Categories=Education;Science;Simulation;
+Keywords=evolution;genetic;simulation;natural selection;agents;
+StartupNotify=true
+StartupWMClass=io.github.riccardogabellone.GeneticAlgo
+SingleMainWindow=true
