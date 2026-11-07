@@ -104,11 +104,13 @@ cargo run --release -- --help                          # all options
 ```
 Every run prints its seed. The same seed and build replay the same run.
 
-Graphical UI, with live rule sliders and charts:
+Graphical UI, with live rule tuning, charts and an inspector for any individual you click (light and dark themes follow the system):
 ```sh
 sudo apt install libegl1 libegl-mesa0                  # once, on WSL/Linux
 cargo run --release -p genetic_algo_ui
 ```
+
+![The graphical UI: rules on the left, the map in the middle, stats and charts on the right](assets/screenshots/ui.png)
 
 The optional rules can slow evolution past the default tick limit, so raise it:
 ```sh
@@ -134,7 +136,7 @@ Maps of 16x16 and larger are the supported range. Smaller maps cannot sustain a 
 
 The core does not depend on `render`, so a front end only needs `Simulation::step()`, `world()` and `history()`.
 
-The `ui` crate is the egui front end, kept in its own crate so the core and terminal builds do not pull in egui. `controller` holds all its run logic and draws nothing; `app`, `map_view` and `charts` only draw and report input.
+The `ui` crate is the egui front end, kept in its own crate so the core and terminal builds do not pull in egui. `controller` holds all its run logic and draws nothing. `app` lays out the window from one module per region (`toolbar`, `rules_panel`, `map_view`, `inspector`, `stats_panel`, `charts`), which only draw and report input; `theme` holds every colour and font, and `widgets` the shared controls. The design choices and their references are in [ui/DESIGN.md](ui/DESIGN.md).
 
 The app's identity lives in `ui/src/identity.rs`: its name, the ID `io.github.riccardogabellone.GeneticAlgo` and the window icon. The same ID names the Linux desktop entry in `packaging/linux/`, so the desktop matches the window to its launcher and icon. The logo is generated, not drawn: `assets/logo/` turns the source image into SVG masters, and from them the icons in `assets/icons/` (PNG sizes, Windows `.ico`, macOS `.icns`). See `assets/logo/AGENTS.md`.
 
