@@ -3,6 +3,8 @@ name = "genetic_algo"
 version = "0.2.0"
 edition = "2024"
 description = "Agent-based evolution sandbox: free-roaming individuals evolve smartness on a grid."
+license = "MIT"
+repository = "https://github.com/riccardogabellone/genetic_algo"
 
 [workspace]
 members = ["ui"]
