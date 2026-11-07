@@ -66,6 +66,9 @@ Tutti i valori numerici sono in `src/config.rs`. Tra parentesi i default.
 - **memoria** (`--memory`, 5): a fine mandato ogni votante ricorda se la sua "health" è salita o scesa e se il suo voto era andato al vincitore. Quanti mandati ricorda è proporzionale alla smartness attuale
   - mandato andato bene: favorisce politiche simili a quella del vincitore; andato male: le sfavorisce
   - chi aveva votato un altro: un mandato andato bene lo fa ricredere, uno andato male gli dà ragione
+- **giudizio** (`--judge-terms`): come i votanti giudicano un mandato concluso
+  - `violence` (default): il tasso di combattimenti dell'intera popolazione durante il mandato, confrontato con quello tipico. Stesso giudizio per tutti
+  - `personal`: la variazione della propria "health". Dipende quasi solo dalla fortuna col cibo, quindi la memoria non impara nulla
 - **limite** (`--max-terms`, 2): nessuno può essere eletto più di due volte nella vita
 - **influenza** (`--leader-influence`, 0.5): a ogni turno un seguace agisce con probabilità 0.5 secondo la politica del leader invece che la propria
 - memorie e mandati non si ereditano
@@ -163,7 +166,15 @@ Leaders, over 48 runs of 20,000 ticks on 32x32. Fights are over food 0.5, for no
 | Fights, influence 1 | 1.02 | 0.0268 | 533 | 2 |
 | Fights, no policies or leaders | 1.00 | 0.0268 | 531 | 0 |
 
-Fights select against aggression, but acting on a leader's policy hides an individual's own from selection, so leaders keep a population from evolving peace. Memory had no measurable effect: at influence 1 and at 0.5, memory 0 and memory 20 land within noise of each other, for both the population and the leaders' own aggression.
+Fights select against aggression, but acting on a leader's policy hides an individual's own from selection, so leaders keep a population from evolving peace. Memory only matters when voters judge terms by the population's fight rate and live through several elections. Over 48 runs at influence 1, with the term limit lifted so short terms do not run out of candidates, the leaders' mean aggression after tick 5,000 was:
+
+| Term length | Memories per adult | Fights overall, memory 0 | Fights overall, memory 20 | Own health, memory 20 |
+|---|---|---|---|---|
+| 30 ticks (default) | 0.5 | 0.957 | 0.997 | 1.020 |
+| 5 ticks | 2.6 | 0.997 | 0.962 | 1.060 |
+| 2 ticks | 6.4 | 1.037 | 0.919 | 1.018 |
+
+The standard error of each mean is about 0.02. A voter's own health over a term is mostly luck with food, so judging by it never helps. A leader's aggression strongly drives the population's fight rate (correlation about 0.9), so judging by that works: memory tilts 75% of the votes it changes toward the more peaceful candidate. But with 30-tick terms an adult lives through so few elections that it has little to remember. At 2-tick terms, memory elects calmer leaders, with about 13% fewer fights.
 
 # Testing
 ```sh

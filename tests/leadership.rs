@@ -11,7 +11,7 @@ use genetic_algo::{
         Gender::{Female, Male},
         Individual,
     },
-    leadership::{MAX_AGGRESSION, Policy},
+    leadership::{MAX_AGGRESSION, Policy, TermJudgement},
     simulation::Simulation,
     world::{Cell, Position, World},
 };
@@ -337,6 +337,7 @@ fn voters_remember_how_a_term_went_for_them() {
     let config = Config {
         election_interval: 5,
         max_terms: 100,
+        term_judgement: TermJudgement::Personal,
         ..rules()
     };
     let mut world = World::new(5, 5);
@@ -432,4 +433,51 @@ fn policies_stay_put_without_mutation_or_a_spread_to_draw_from() {
     for (_, individual) in simulation.world().individuals() {
         assert_eq!(individual.civics.policy, policy);
     }
+}
+
+/// Judged by violence, everyone who voted in the same election shares one verdict, and
+/// calm terms after violent ones read as good.
+#[test]
+fn violence_verdicts_are_shared_and_follow_the_fight_rate() {
+    let config = Config {
+        leaders_enabled: true,
+        election_interval: 5,
+        max_terms: u32::MAX,
+        contest_fight_chance: 0.5,
+        random_fight_chance: 0.02,
+        max_memory: 20,
+        ..Config::default()
+    };
+    assert_eq!(
+        config.term_judgement,
+        TermJudgement::Violence,
+        "the default"
+    );
+    let mut simulation = Simulation::new(config, 1).unwrap();
+    for _ in 0..300 {
+        simulation.step();
+    }
+    assert!(
+        simulation.latest().population > 50,
+        "the population must survive"
+    );
+    let mut verdicts: Vec<f32> = simulation
+        .world()
+        .individuals()
+        .filter_map(|(_, individual)| individual.civics.memories().last().map(|m| m.outcome))
+        .collect();
+    assert!(verdicts.len() > 10, "adults have voted and remembered");
+    // The newest memory of most voters comes from the same, latest election.
+    verdicts.sort_by(f32::total_cmp);
+    let median = verdicts[verdicts.len() / 2];
+    let sharing = verdicts.iter().filter(|v| **v == median).count();
+    assert!(
+        sharing * 2 > verdicts.len(),
+        "{sharing} of {} share it",
+        verdicts.len()
+    );
+    assert!(
+        verdicts.iter().any(|v| *v != 0.0),
+        "some term differed from typical"
+    );
 }

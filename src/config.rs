@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use crate::{leadership::MAX_AGGRESSION, sampling::Spread};
+use crate::{
+    leadership::{MAX_AGGRESSION, TermJudgement},
+    sampling::Spread,
+};
 
 /// Smartness is a score in `0..=MAX_SMARTNESS`.
 pub const MAX_SMARTNESS: f32 = 100.0;
@@ -87,6 +90,8 @@ pub struct Config {
     pub leader_influence: f32,
     /// Past elections recalled at maximum smartness, proportional below it.
     pub max_memory: usize,
+    /// What voters judge a finished term by.
+    pub term_judgement: TermJudgement,
     pub founder_aggression: Spread,
     pub founder_appetite: Spread,
     /// Largest policy mutation, as a share of each scale. Happens at `mutation_rate`.
@@ -172,6 +177,7 @@ impl Config {
             max_terms: 2,
             leader_influence: 0.5,
             max_memory: 5,
+            term_judgement: TermJudgement::Violence,
             founder_aggression: Spread {
                 min: 0.0,
                 mode: 1.0,

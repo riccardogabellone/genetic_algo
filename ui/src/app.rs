@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use eframe::egui::{self, Color32, Key, Slider, TextEdit};
+use genetic_algo::leadership::TermJudgement;
 
 use crate::{
     charts::{self, Panels},
@@ -227,6 +228,14 @@ impl App {
                         "Past elections recalled at smartness 100, proportional below it.",
                     ),
             );
+            ui.label("Voters judge a term by").on_hover_text(
+                "Fights overall: how violent the whole population was, compared with typical terms. \
+                 Own health: mostly luck with food, so memory learns nothing from it.",
+            );
+            ui.horizontal(|ui| {
+                track(ui.radio_value(&mut rules.term_judgement, TermJudgement::Violence, "Fights overall"));
+                track(ui.radio_value(&mut rules.term_judgement, TermJudgement::Personal, "Own health"));
+            });
         });
 
         ui.add_space(4.0);

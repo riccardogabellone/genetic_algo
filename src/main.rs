@@ -9,6 +9,7 @@ use std::{
 use clap::Parser;
 use genetic_algo::{
     config::{Config, DEFAULT_HEIGHT, DEFAULT_WIDTH},
+    leadership::TermJudgement,
     render::{
         ascii::{CLEAR_SCREEN, legend, map_frame, stats_line},
         chart::write_chart,
@@ -70,6 +71,9 @@ struct Args {
     /// Past elections recalled at maximum smartness [default: from the rules].
     #[arg(long)]
     memory: Option<usize>,
+    /// What voters judge a finished term by.
+    #[arg(long, value_enum, default_value_t = Judgement::Violence)]
+    judge_terms: Judgement,
     /// Replays an earlier run. A random seed is chosen and printed when omitted.
     #[arg(long)]
     seed: Option<u64>,
@@ -88,6 +92,24 @@ struct Args {
     /// Record one GIF frame every N ticks.
     #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u32).range(1..))]
     gif_every: u32,
+}
+
+/// Mirrors `TermJudgement`, so the core does not depend on the command-line parser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Judgement {
+    /// The voter's own health over the term.
+    Personal,
+    /// The population's fight rate over the term, compared with typical terms.
+    Violence,
+}
+
+impl From<Judgement> for TermJudgement {
+    fn from(judgement: Judgement) -> Self {
+        match judgement {
+            Judgement::Personal => Self::Personal,
+            Judgement::Violence => Self::Violence,
+        }
+    }
 }
 
 fn main() {
@@ -122,6 +144,7 @@ fn run(args: &Args) -> Result<(), Box<dyn Error>> {
         config.fight_smartness_loss = loss;
     }
     config.leaders_enabled = args.leaders;
+    config.term_judgement = args.judge_terms.into();
     if let Some(interval) = args.election_interval {
         config.election_interval = interval;
     }

@@ -12,7 +12,22 @@ use crate::{
 
 pub const MAX_AGGRESSION: f32 = 2.0;
 /// A health change of this share of the scale counts as a term going fully well or badly.
-const FULL_OUTCOME_SWING: f32 = 0.25;
+const FULL_HEALTH_SWING: f32 = 0.25;
+/// A fight rate this much below or above the typical term counts as fully good or bad.
+const FULL_VIOLENCE_SWING: f32 = 0.25;
+/// How much each finished term moves the typical fight rate.
+const TYPICAL_RATE_WEIGHT: f32 = 0.2;
+
+/// What a voter judges a finished term by.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TermJudgement {
+    /// How the voter's own health changed. Mostly luck with food, so memory learns nothing.
+    Personal,
+    /// How the whole population's fight rate compared with typical terms, which the
+    /// leader's aggression strongly drives. The same verdict for every voter.
+    #[default]
+    Violence,
+}
 
 /// How an individual would like everyone to behave.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -241,6 +256,20 @@ pub struct Leadership {
     /// The last winner, kept after death so its term can still be judged.
     last_winner: Option<(u64, Policy)>,
     term_started: u32,
+    /// Fights and individual-turns so far in the current term.
+    term_fights: u64,
+    term_turns: u64,
+    /// A running average of past terms' fight rates. `None` until a term has closed.
+    typical_fight_rate: Option<f32>,
+}
+
+/// The term being judged at an election.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ClosingTerm {
+    winner_id: u64,
+    winner: Policy,
+    /// How the term's fight rate compared with typical terms: positive when calmer.
+    violence_verdict: f32,
 }
 
 impl Leadership {
@@ -289,7 +318,12 @@ impl Leadership {
         }
 
         let mut votes = vec![0_u32; ballot.len()];
-        let closing = self.last_winner;
+        let violence_verdict = self.close_fight_rate();
+        let closing = self.last_winner.map(|(winner_id, winner)| ClosingTerm {
+            winner_id,
+            winner,
+            violence_verdict,
+        });
         for (_, voter) in world.individuals_mut() {
             if !can_vote(voter, config) {
                 continue;
@@ -324,6 +358,30 @@ impl Leadership {
         self.last_winner = Some((winner_id, winner_policy));
         self.term_started = tick;
         true
+    }
+
+    /// Counts one tick of the current term, for judging it by violence later.
+    pub fn observe_tick(&mut self, fights: u32, population: usize) {
+        self.term_fights += u64::from(fights);
+        self.term_turns += population as u64;
+    }
+
+    /// Compares the closing term's fight rate with the typical one, then folds it in.
+    fn close_fight_rate(&mut self) -> f32 {
+        let turns = std::mem::take(&mut self.term_turns);
+        let fights = std::mem::take(&mut self.term_fights);
+        if turns == 0 {
+            return 0.0;
+        }
+        let rate = fights as f32 / turns as f32;
+        let verdict = match self.typical_fight_rate {
+            Some(typical) if typical > 0.0 => (typical - rate) / (typical * FULL_VIOLENCE_SWING),
+            _ => 0.0,
+        };
+        self.typical_fight_rate = Some(self.typical_fight_rate.map_or(rate, |typical| {
+            typical + (rate - typical) * TYPICAL_RATE_WEIGHT
+        }));
+        verdict
     }
 
     /// A random few who may stand, plus the incumbent if it still may.
@@ -366,19 +424,23 @@ fn choose(voter: &Individual, ballot: &[(u64, Policy)], config: &Config) -> Opti
 }
 
 /// Turns the voter's last vote into a memory, judged by how its health changed since.
-fn remember_term(voter: &mut Individual, closing: Option<(u64, Policy)>, config: &Config) {
+fn remember_term(voter: &mut Individual, closing: Option<ClosingTerm>, config: &Config) {
     let health = voter.health as f32;
     let record = voter.civics.record_mut();
-    let (Some(vote), Some((winner_id, winner))) = (record.pending_vote.take(), closing) else {
+    let (Some(vote), Some(term)) = (record.pending_vote.take(), closing) else {
         return;
     };
-    let change = health - vote.health_when_cast as f32;
-    let full_swing = config.max_health as f32 * FULL_OUTCOME_SWING;
+    let verdict = match config.term_judgement {
+        TermJudgement::Personal => {
+            (health - vote.health_when_cast as f32) / (config.max_health as f32 * FULL_HEALTH_SWING)
+        }
+        TermJudgement::Violence => term.violence_verdict,
+    };
     record.memories.push(TermMemory {
         chosen: vote.chosen,
-        winner,
-        agreed: vote.chosen_id == winner_id,
-        outcome: (change / full_swing).clamp(-1.0, 1.0),
+        winner: term.winner,
+        agreed: vote.chosen_id == term.winner_id,
+        outcome: verdict.clamp(-1.0, 1.0),
     });
     let excess = record.memories.len().saturating_sub(config.max_memory);
     record.memories.drain(..excess);
@@ -535,8 +597,11 @@ mod tests {
 
     #[test]
     fn terms_are_judged_by_the_health_change_and_clamped() {
-        let config = config();
-        let closing = Some((7, HAWK));
+        let config = Config {
+            term_judgement: TermJudgement::Personal,
+            ..config()
+        };
+        let closing = Some(term(7, HAWK, 0.0));
         for (before, after, expected) in [
             (50, 75, 1.0),
             (50, 25, -1.0),
@@ -563,6 +628,76 @@ mod tests {
         }
     }
 
+    fn term(winner_id: u64, winner: Policy, violence_verdict: f32) -> ClosingTerm {
+        ClosingTerm {
+            winner_id,
+            winner,
+            violence_verdict,
+        }
+    }
+
+    #[test]
+    fn each_judgement_reads_its_own_signal() {
+        for (judgement, expected) in [
+            (TermJudgement::Personal, 1.0),
+            (TermJudgement::Violence, -0.5),
+        ] {
+            let config = Config {
+                term_judgement: judgement,
+                ..config()
+            };
+            let mut judge = voter(100.0, DOVE);
+            judge.civics.record_mut().pending_vote = Some(Vote {
+                chosen_id: 7,
+                chosen: DOVE,
+                health_when_cast: 50,
+            });
+            judge.health = 75;
+            remember_term(&mut judge, Some(term(7, DOVE, -0.5)), &config);
+            assert_eq!(
+                judge.civics.memories()[0].outcome,
+                expected,
+                "{judgement:?}"
+            );
+        }
+    }
+
+    fn rate_after(terms: &[(u32, usize)]) -> Vec<f32> {
+        let mut leadership = Leadership::default();
+        terms
+            .iter()
+            .map(|(fights, population)| {
+                for _ in 0..10 {
+                    leadership.observe_tick(*fights, *population);
+                }
+                leadership.close_fight_rate()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn violence_is_judged_against_typical_terms() {
+        // The first term only sets what is typical.
+        let verdicts = rate_after(&[(10, 100), (10, 100), (5, 100), (20, 100)]);
+        assert_eq!(verdicts[0], 0.0);
+        assert_eq!(verdicts[1], 0.0, "as violent as usual");
+        assert!(verdicts[2] > 0.0, "calmer than usual is good");
+        assert!(verdicts[3] < 0.0, "more violent than usual is bad");
+    }
+
+    /// What counts as typical adapts, so a lasting change stops looking unusual.
+    #[test]
+    fn the_typical_rate_follows_lasting_change() {
+        let verdicts = rate_after(&[(10, 100), (20, 100), (20, 100), (20, 100), (20, 100)]);
+        assert!(verdicts[1] < verdicts[2] && verdicts[2] < verdicts[3] && verdicts[3] < 0.0);
+    }
+
+    #[test]
+    fn violence_verdicts_handle_peace_and_emptiness() {
+        assert_eq!(rate_after(&[(0, 100), (0, 100), (3, 100)]), [0.0, 0.0, 0.0]);
+        assert_eq!(rate_after(&[(4, 0), (4, 0)]), [0.0, 0.0]);
+    }
+
     #[test]
     fn voting_for_someone_else_is_remembered_as_disagreement() {
         let config = config();
@@ -573,7 +708,7 @@ mod tests {
             chosen: DOVE,
             health_when_cast,
         });
-        remember_term(&mut judge, Some((2, HAWK)), &config);
+        remember_term(&mut judge, Some(term(2, HAWK, 0.0)), &config);
         assert!(!judge.civics.memories()[0].agreed);
     }
 
@@ -581,6 +716,7 @@ mod tests {
     fn memories_are_capped_and_keep_the_newest() {
         let config = Config {
             max_memory: 3,
+            term_judgement: TermJudgement::Personal,
             ..config()
         };
         let mut judge = voter(100.0, DOVE);
@@ -592,7 +728,7 @@ mod tests {
                 chosen: DOVE,
                 health_when_cast,
             });
-            remember_term(&mut judge, Some((1, DOVE)), &config);
+            remember_term(&mut judge, Some(term(1, DOVE, 0.0)), &config);
         }
         assert_eq!(judge.civics.memories().len(), 3);
         assert!(judge.civics.memories()[2].outcome > judge.civics.memories()[0].outcome);
@@ -611,7 +747,7 @@ mod tests {
             chosen: DOVE,
             health_when_cast,
         });
-        remember_term(&mut judge, Some((1, DOVE)), &config);
+        remember_term(&mut judge, Some(term(1, DOVE, 0.0)), &config);
         assert!(judge.civics.memories().is_empty());
     }
 

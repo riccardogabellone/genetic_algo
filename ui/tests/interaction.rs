@@ -196,3 +196,16 @@ fn elect_leaders_checkbox_turns_the_rule_on_and_off() {
     assert!(!simulation.config().leaders_enabled);
     assert_eq!(simulation.leadership().leader(), None);
 }
+
+#[test]
+fn the_term_judgement_radio_buttons_reach_the_simulation() {
+    use genetic_algo::leadership::TermJudgement;
+    let mut harness = harness();
+    click(&mut harness, "Elect leaders");
+    click(&mut harness, "Own health");
+    let config = harness.state().controller.simulation().config();
+    assert_eq!(config.term_judgement, TermJudgement::Personal);
+    click(&mut harness, "Fights overall");
+    let config = harness.state().controller.simulation().config();
+    assert_eq!(config.term_judgement, TermJudgement::Violence);
+}

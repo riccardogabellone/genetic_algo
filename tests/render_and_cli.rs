@@ -165,6 +165,7 @@ fn invalid_input_fails_with_a_message() {
         &["--leader-influence", "2"],
         &["--max-terms", "0"],
         &["--memory", "1000"],
+        &["--judge-terms", "mood"],
         &["--chart", "not_a_png.txt"],
         &["--chart", "no_extension"],
         &["--chart", "/tmp/"],

@@ -148,6 +148,9 @@ impl Simulation {
             self.take_turn(position, &mut events);
         }
 
+        let population = self.world.individuals().count();
+        self.leadership.observe_tick(events.fights, population);
+
         let tick = self.latest().tick + 1;
         self.regrow_food(tick);
         self.record(events);

@@ -304,6 +304,7 @@ fn invariants_hold_under_extreme_rules() {
             leaders_enabled: true,
             max_memory: 0,
             leader_influence: 0.0,
+            term_judgement: genetic_algo::leadership::TermJudgement::Personal,
             ..Config::for_size(4, 4)
         },
     ];

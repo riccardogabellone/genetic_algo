@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use genetic_algo::{
     config::{Config, ConfigError, MAX_SMARTNESS},
+    leadership::TermJudgement,
     sampling::Spread,
     simulation::{Outcome, Simulation},
     stats::TickEvents,
@@ -41,6 +42,7 @@ pub struct Rules {
     pub leader_influence: f32,
     pub max_terms: u32,
     pub memory: usize,
+    pub term_judgement: TermJudgement,
     pub stop_at_target: bool,
     pub target: f32,
 }
@@ -68,6 +70,7 @@ impl Default for Rules {
             leader_influence: defaults.leader_influence,
             max_terms: defaults.max_terms,
             memory: defaults.max_memory,
+            term_judgement: defaults.term_judgement,
             stop_at_target: true,
             target: defaults.target_smartness,
         }
@@ -100,6 +103,7 @@ impl Rules {
         config.leader_influence = self.leader_influence;
         config.max_terms = self.max_terms;
         config.max_memory = self.memory;
+        config.term_judgement = self.term_judgement;
         // The scale's maximum is unreachable in practice, because mutation keeps some
         // individuals below it. That is how "never stop for the target" is expressed.
         config.target_smartness = if self.stop_at_target {
@@ -550,6 +554,7 @@ mod tests {
         controller.rules.leader_influence = 0.9;
         controller.rules.max_terms = 3;
         controller.rules.memory = 7;
+        controller.rules.term_judgement = TermJudgement::Personal;
         controller.apply_rules();
         let config = controller.simulation().config();
         assert!(config.leaders_enabled);
@@ -557,6 +562,7 @@ mod tests {
         assert_eq!(config.leader_influence, 0.9);
         assert_eq!(config.max_terms, 3);
         assert_eq!(config.max_memory, 7);
+        assert_eq!(config.term_judgement, TermJudgement::Personal);
     }
 
     #[test]
