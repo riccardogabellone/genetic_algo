@@ -8,6 +8,10 @@ An agent-based evolution sandbox in Rust: small individuals roam a grid and evol
 - `src/`: the simulation core and the terminal front end (`genetic_algo` crate)
 - `ui/`: the egui front end (`genetic_algo_ui` crate), kept separate so the core does not depend on egui
 - `tests/`, `ui/tests/`: integration tests; `examples/`: experiments behind the README's tables
+- `assets/logo/`: the logo pipeline, generating the SVG masters and `assets/icons/`; follow [assets/logo/AGENTS.md](assets/logo/AGENTS.md) and never hand-edit its outputs
+- `packaging/`: desktop integration files for installers
+
+UI design choices, the chosen layout and the references behind them are in [ui/DESIGN.md](ui/DESIGN.md). Read it before changing the UI, and update it when a design choice changes.
 
 ## Setup and commands
 ```sh
