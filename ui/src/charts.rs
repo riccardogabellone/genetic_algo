@@ -1,14 +1,20 @@
-//! Live charts. Each measure has its own panel and axis, all sharing the tick axis.
+//! Live charts. Each measure has its own card and axis, all sharing the tick axis.
+
+use std::sync::Arc;
 
 use eframe::egui::{self, Id};
-use egui_plot::{Corner, HLine, Legend, Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{Corner, HLine, Legend, Line, LineStyle, Plot, PlotPoint, PlotPoints};
 use genetic_algo::{config::MAX_SMARTNESS, stats::TickStats};
 
-use crate::theme;
+use crate::{theme, widgets::card};
 
 /// A chart never needs more points than this; long runs are thinned to it.
 const MAX_POINTS: usize = 1_200;
 const PLOT_GROUP: &str = "tick_axis";
+/// A card's title, margins and outline around its chart.
+const CARD_CHROME: f32 = 48.0;
+const CARD_GAP: f32 = 8.0;
+const MIN_HEIGHT: f32 = 140.0;
 
 /// Evenly spaced entries that always include the latest one, so the chart ends at "now".
 fn thin(history: &[TickStats]) -> Vec<&TickStats> {
@@ -56,95 +62,111 @@ pub struct Panels {
 
 pub fn show(ui: &mut egui::Ui, history: &[TickStats], target: Option<f32>, panels: Panels) {
     let palette = theme::palette(ui.ctx());
-    let (series_color, range_color, target_color) =
-        (palette.accent, palette.secondary, palette.dim);
     let points = thin(history);
-    let count = 2.0 + f32::from(u8::from(panels.speed)) + f32::from(u8::from(panels.policy));
-    let headings = count * 26.0;
-    let height = ((ui.available_height() - headings) / count).max(70.0);
+    let count = 2 + usize::from(panels.speed) + usize::from(panels.policy);
+    // Charts share what is left of the panel's height, but never get shorter than
+    // MIN_HEIGHT: below that the panel scrolls instead.
+    let height =
+        ((ui.available_height() - count as f32 * CARD_CHROME) / count as f32).max(MIN_HEIGHT);
+    let gap = |ui: &mut egui::Ui| ui.add_space(CARD_GAP);
 
-    ui.strong("Smartness");
-    base_plot("smartness_plot", height)
-        .include_y(f64::from(MAX_SMARTNESS))
-        .legend(Legend::default().position(Corner::LeftTop))
-        .show(ui, |plot| {
-            plot.line(
-                series("Max", &points, |s| s.smartness.map(|v| f64::from(v.max)))
-                    .color(range_color)
-                    .width(1.0),
-            );
-            plot.line(
-                series("Min", &points, |s| s.smartness.map(|v| f64::from(v.min)))
-                    .color(range_color)
-                    .width(1.0)
-                    .style(LineStyle::dotted_dense()),
-            );
-            plot.line(
-                series("Mean", &points, |s| s.smartness.map(|v| f64::from(v.mean)))
-                    .color(series_color)
-                    .width(2.0),
-            );
-            if panels.innate {
+    card(ui, "Smartness", None, |ui| {
+        base_plot("smartness_plot", height)
+            .include_y(f64::from(MAX_SMARTNESS))
+            .legend(Legend::default().position(Corner::RightBottom))
+            .show(ui, |plot| {
                 plot.line(
-                    series("Innate mean", &points, |s| {
-                        s.smartness.map(|v| f64::from(v.innate_mean))
-                    })
-                    .color(target_color)
-                    .width(1.5),
+                    series("Max", &points, |s| s.smartness.map(|v| f64::from(v.max)))
+                        .color(palette.dim)
+                        .width(1.0),
                 );
-            }
-            if let Some(target) = target {
-                plot.hline(
-                    HLine::new("Target", f64::from(target))
-                        .color(target_color)
-                        .style(LineStyle::dashed_loose()),
+                plot.line(
+                    series("Min", &points, |s| s.smartness.map(|v| f64::from(v.min)))
+                        .color(palette.dim)
+                        .width(1.0)
+                        .style(LineStyle::dotted_dense()),
                 );
-            }
-        });
+                if panels.innate {
+                    plot.line(
+                        series("Innate mean", &points, |s| {
+                            s.smartness.map(|v| f64::from(v.innate_mean))
+                        })
+                        .color(palette.secondary)
+                        .width(1.5),
+                    );
+                }
+                // The line takes the colour of the smartness it shows, as on the map's
+                // scale from dim to bright.
+                plot.line(
+                    series("Mean", &points, |s| s.smartness.map(|v| f64::from(v.mean)))
+                        .color(palette.accent)
+                        .width(2.5)
+                        .gradient_color(
+                            Arc::new(|point: PlotPoint| palette.smartness_color(point.y as f32)),
+                            false,
+                        ),
+                );
+                if let Some(target) = target {
+                    plot.hline(
+                        HLine::new("Target", f64::from(target))
+                            .color(palette.secondary)
+                            .style(LineStyle::dashed_loose()),
+                    );
+                }
+            });
+    });
+    gap(ui);
 
-    ui.strong("Population");
-    base_plot("population_plot", height).show(ui, |plot| {
-        plot.line(
-            series("Population", &points, |s| Some(s.population as f64))
-                .color(series_color)
-                .width(2.0),
-        );
+    card(ui, "Population", None, |ui| {
+        base_plot("population_plot", height).show(ui, |plot| {
+            plot.line(
+                series("Population", &points, |s| Some(s.population as f64))
+                    .color(palette.accent)
+                    .width(2.0)
+                    .fill(0.0)
+                    .fill_alpha(0.12),
+            );
+        });
     });
 
     if panels.policy {
-        ui.strong("Mean policy");
-        base_plot("policy_plot", height)
-            .include_y(1.0)
-            .legend(Legend::default().position(Corner::LeftTop))
-            .show(ui, |plot| {
-                plot.line(
-                    series("Aggression", &points, |s| {
-                        s.mean_policy.map(|policy| f64::from(policy.aggression))
-                    })
-                    .color(series_color)
-                    .width(2.0),
-                );
-                plot.line(
-                    series("Appetite", &points, |s| {
-                        s.mean_policy.map(|policy| f64::from(policy.appetite))
-                    })
-                    .color(target_color)
-                    .width(2.0),
-                );
-            });
+        gap(ui);
+        card(ui, "Mean policy", None, |ui| {
+            base_plot("policy_plot", height)
+                .include_y(1.0)
+                .legend(Legend::default().position(Corner::RightBottom))
+                .show(ui, |plot| {
+                    plot.line(
+                        series("Aggression", &points, |s| {
+                            s.mean_policy.map(|policy| f64::from(policy.aggression))
+                        })
+                        .color(palette.danger)
+                        .width(2.0),
+                    );
+                    plot.line(
+                        series("Appetite", &points, |s| {
+                            s.mean_policy.map(|policy| f64::from(policy.appetite))
+                        })
+                        .color(palette.smartness[1])
+                        .width(2.0),
+                    );
+                });
+        });
     }
 
     if panels.speed {
-        ui.strong("Mean speed");
-        base_plot("speed_plot", height)
-            .include_y(1.0)
-            .show(ui, |plot| {
-                plot.line(
-                    series("Mean speed", &points, |s| s.mean_speed.map(f64::from))
-                        .color(series_color)
-                        .width(2.0),
-                );
-            });
+        gap(ui);
+        card(ui, "Mean speed", None, |ui| {
+            base_plot("speed_plot", height)
+                .include_y(1.0)
+                .show(ui, |plot| {
+                    plot.line(
+                        series("Mean speed", &points, |s| s.mean_speed.map(f64::from))
+                            .color(palette.accent)
+                            .width(2.0),
+                    );
+                });
+        });
     }
 }
 

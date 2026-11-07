@@ -160,3 +160,79 @@ pub fn card(
         })
         .inner
 }
+
+/// A small line chart without axes, showing a trend at a glance. Each segment takes the
+/// colour `color` gives its value, and the area under the line is tinted with `fill`.
+pub fn sparkline(ui: &mut egui::Ui, values: &[f32], fill: Color32, color: impl Fn(f32) -> Color32) {
+    let size = Vec2::new(ui.available_width(), 26.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    if values.len() < 2 || !ui.is_rect_visible(rect) {
+        return;
+    }
+    let (low, high) = values
+        .iter()
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(low, high), value| {
+            (low.min(*value), high.max(*value))
+        });
+    // A flat series sits in the middle instead of dividing by zero.
+    let span = (high - low).max(f32::EPSILON);
+    let point = |index: usize, value: f32| {
+        let x = rect.left() + rect.width() * index as f32 / (values.len() - 1) as f32;
+        let y = if high > low {
+            rect.bottom() - rect.height() * (value - low) / span
+        } else {
+            rect.center().y
+        };
+        egui::pos2(x, y)
+    };
+    let line: Vec<egui::Pos2> = values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| point(i, *v))
+        .collect();
+
+    let painter = ui.painter_at(rect);
+    let fill = fill.gamma_multiply(0.18);
+    for pair in line.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let area = vec![
+            a,
+            b,
+            egui::pos2(b.x, rect.bottom()),
+            egui::pos2(a.x, rect.bottom()),
+        ];
+        painter.add(egui::Shape::convex_polygon(area, fill, Stroke::NONE));
+    }
+    for (pair, value) in line.windows(2).zip(&values[1..]) {
+        painter.line_segment([pair[0], pair[1]], Stroke::new(1.5, color(*value)));
+    }
+}
+
+/// A headline number: caption, value, a detail line and optionally a trend below.
+pub fn stat_tile(
+    ui: &mut egui::Ui,
+    caption: &str,
+    value: &str,
+    detail: &str,
+    trend: impl FnOnce(&mut egui::Ui),
+) {
+    let palette = theme::palette(ui.ctx());
+    egui::Frame::new()
+        .fill(palette.panel)
+        .stroke(Stroke::new(1.0, palette.outline))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(RichText::new(caption).small().color(palette.secondary));
+            ui.label(
+                RichText::new(value)
+                    .family(egui::FontFamily::Name(theme::SEMIBOLD_FAMILY.into()))
+                    .size(20.0)
+                    .color(palette.text),
+            );
+            ui.label(RichText::new(detail).small().color(palette.secondary));
+            trend(ui);
+        });
+}
