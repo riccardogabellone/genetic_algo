@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: how software centres (GNOME Software, KDE Discover) describe the app. -->
+<component type="desktop-application">
+  <id>io.github.riccardogabellone.GeneticAlgo</id>
+  <name>Genetic Algo</name>
+  <summary>Watch individuals evolve on a grid by natural selection</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.riccardogabellone">
+    <name>Riccardo Gabellone</name>
+  </developer>
+  <description>
+    <p>
+      An agent-based evolution sandbox. Individuals roam a grid freely, eat, fight,
+      reproduce and die, and heritable traits such as smartness evolve by natural
+      selection. Optional rules add costs, vision, evolving speed, fights, elected
+      leaders and evolved neural-network brains, and every rule can be tuned live.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.riccardogabellone.GeneticAlgo.desktop</launchable>
+  <url type="homepage">https://github.com/riccardogabellone/genetic_algo</url>
+  <url type="bugtracker">https://github.com/riccardogabellone/genetic_algo/issues</url>
+  <categories>
+    <category>Education</category>
+    <category>Science</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

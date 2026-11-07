@@ -92,6 +92,9 @@ The run stops at the first of these conditions:
 - colours and symbols per element: FOOD `*`, WALL `#`, DEATH `X`
 - output to the console (ASCII) and to a file (GIF), plus a final chart (PNG) of smartness and population
 
+# Install
+The graphical app has installers for Linux (`.deb`, `.AppImage`), Windows (`-setup.exe`, `.msi`, portable `.zip`) and macOS (`.dmg`, Apple silicon) on the [releases page](https://github.com/riccardogabellone/genetic_algo/releases). They are not code-signed yet, so macOS and Windows warn on first launch; [packaging/README.md](packaging/README.md) explains how to get past the warning, and how the packages are built.
+
 # Usage
 ```sh
 cargo run --release                                    # live map, then results.png
