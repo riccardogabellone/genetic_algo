@@ -300,14 +300,24 @@ impl Controller {
         self.error.as_deref()
     }
 
-    pub fn outcome_message(&self) -> Option<String> {
+    /// Why the run stopped, in a few words.
+    pub fn outcome_summary(&self) -> Option<String> {
         let tick = self.simulation.latest().tick;
         self.simulation.outcome().map(|outcome| match outcome {
             Outcome::Extinct => format!("Extinct at tick {tick}."),
-            Outcome::TargetReached => {
-                format!("Target reached at tick {tick}. Untick \"Stop at target\" to continue.")
-            }
+            Outcome::TargetReached => format!("Target reached at tick {tick}."),
             Outcome::TicksExhausted => format!("Tick limit reached at tick {tick}."),
+        })
+    }
+
+    /// Why the run stopped, and how to go on when that is possible.
+    pub fn outcome_message(&self) -> Option<String> {
+        let summary = self.outcome_summary()?;
+        Some(match self.simulation.outcome() {
+            Some(Outcome::TargetReached) => {
+                format!("{summary} Switch off \"Stop at target\" to continue.")
+            }
+            _ => summary,
         })
     }
 

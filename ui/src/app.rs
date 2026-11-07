@@ -13,6 +13,9 @@ use crate::{
 /// Simulation time allowed per frame, which keeps a 60 fps window responsive.
 const FRAME_BUDGET: Duration = Duration::from_millis(10);
 const TOAST_DURATION: Duration = Duration::from_secs(6);
+const STATS_MIN_WIDTH: f32 = 260.0;
+/// The largest share of the window's width the stats panel may take.
+const STATS_MAX_SHARE: f32 = 0.35;
 
 pub struct App {
     pub controller: Controller,
@@ -65,10 +68,13 @@ impl App {
                 egui::ScrollArea::vertical()
                     .show(ui, |ui| rules_panel::show(ui, &mut self.controller));
             });
+        // The map is the subject: on a narrow window the stats give way first.
+        let stats_max = (ui.available_width() * STATS_MAX_SHARE).max(STATS_MIN_WIDTH);
         egui::Panel::right("stats")
             .resizable(true)
             .default_size(440.0)
-            .min_size(300.0)
+            .min_size(STATS_MIN_WIDTH)
+            .max_size(stats_max)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| stats_panel::show(ui, &self.controller));
             });
@@ -108,10 +114,10 @@ impl App {
         let finished = self.controller.simulation().outcome().is_some();
         if finished
             && !self.seen_finished
-            && let Some(message) = self.controller.outcome_message()
+            && let Some(message) = self.controller.outcome_summary()
         {
             // Not closable: its close button is a glyph the bundled fonts lack, and the
-            // toast leaves on its own while the status strip keeps the message.
+            // toast leaves on its own while the status strip keeps the full message.
             self.toasts
                 .warning(message)
                 .duration(TOAST_DURATION)
@@ -181,6 +187,22 @@ mod tests {
     fn app() -> (App, egui::Context) {
         let context = egui::Context::default();
         (App::new(&context), context)
+    }
+
+    #[test]
+    fn the_smallest_window_renders_with_every_panel_shown() {
+        let (mut app, context) = app();
+        app.controller
+            .apply_preset(crate::controller::Preset::AllRules);
+        app.controller.rules.leaders = true;
+        app.controller.apply_rules();
+        app.controller.step_once();
+        let small = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 560.0))),
+            ..RawInput::default()
+        };
+        let mut output = context.run_ui(small, |ui| app.show(ui));
+        output.textures_delta.clear();
     }
 
     #[test]

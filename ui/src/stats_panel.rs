@@ -15,6 +15,7 @@ use crate::{
 const TREND_TICKS: usize = 600;
 const TREND_POINTS: usize = 120;
 const DEATH_BAR_HEIGHT: f32 = 10.0;
+const MIN_TILE_WIDTH: f32 = 120.0;
 
 pub fn show(ui: &mut egui::Ui, controller: &Controller) {
     let simulation = controller.simulation();
@@ -51,54 +52,75 @@ fn trend(history: &[TickStats], value: impl Fn(&TickStats) -> Option<f32>) -> Ve
     recent.iter().step_by(stride).filter_map(value).collect()
 }
 
+/// One headline tile: what it shows and the trend under it.
+struct Tile {
+    caption: &'static str,
+    value: String,
+    detail: String,
+    trend: Vec<f32>,
+    /// Colours the trend by value as smartness, instead of in the accent.
+    smartness_colors: bool,
+}
+
 fn tiles(ui: &mut egui::Ui, history: &[TickStats], speed: bool) {
     let palette = theme::palette(ui.ctx());
     let latest = history
         .last()
         .expect("a simulation always has its first tick");
-    let count = if speed { 3 } else { 2 };
-    ui.columns(count, |columns| {
-        let population = trend(history, |stats| Some(stats.population as f32));
-        widgets::stat_tile(
-            &mut columns[0],
-            "Population",
-            &latest.population.to_string(),
-            &format!("{} M / {} F", latest.males, latest.females),
-            |ui| widgets::sparkline(ui, &population, palette.accent, |_| palette.accent),
-        );
-
-        let smartness = trend(history, |stats| stats.smartness.map(|s| s.mean));
-        let (value, detail) = latest.smartness.map_or_else(
-            || ("n/a".to_owned(), "extinct".to_owned()),
-            |s| {
-                (
-                    format!("{:.1}", s.mean),
-                    format!("range {:.0}-{:.0}", s.min, s.max),
-                )
-            },
-        );
-        widgets::stat_tile(&mut columns[1], "Mean smartness", &value, &detail, |ui| {
-            widgets::sparkline(ui, &smartness, palette.accent, |value| {
-                palette.smartness_color(value)
-            });
-        });
-
-        if speed {
-            let speeds = trend(history, |stats| stats.mean_speed);
-            let value = latest
+    let (smartness, range) = latest.smartness.map_or_else(
+        || ("n/a".to_owned(), "extinct".to_owned()),
+        |s| {
+            (
+                format!("{:.1}", s.mean),
+                format!("range {:.0}-{:.0}", s.min, s.max),
+            )
+        },
+    );
+    let mut tiles = vec![
+        Tile {
+            caption: "Population",
+            value: latest.population.to_string(),
+            detail: format!("{} M / {} F", latest.males, latest.females),
+            trend: trend(history, |stats| Some(stats.population as f32)),
+            smartness_colors: false,
+        },
+        Tile {
+            caption: "Mean smartness",
+            value: smartness,
+            detail: range,
+            trend: trend(history, |stats| stats.smartness.map(|s| s.mean)),
+            smartness_colors: true,
+        },
+    ];
+    if speed {
+        tiles.push(Tile {
+            caption: "Speed",
+            value: latest
                 .mean_speed
-                .map_or_else(|| "n/a".to_owned(), |speed| format!("{speed:.2}"));
-            widgets::stat_tile(
-                &mut columns[2],
-                "Speed",
-                &value,
-                "mean, cells per move",
-                |ui| {
-                    widgets::sparkline(ui, &speeds, palette.accent, |_| palette.accent);
-                },
-            );
-        }
-    });
+                .map_or_else(|| "n/a".to_owned(), |speed| format!("{speed:.2}")),
+            detail: "mean, cells per move".to_owned(),
+            trend: trend(history, |stats| stats.mean_speed),
+            smartness_colors: false,
+        });
+    }
+
+    // As many tiles per row as fit, so a narrow panel stacks them instead of squeezing.
+    let per_row = ((ui.available_width() / MIN_TILE_WIDTH) as usize).clamp(1, tiles.len());
+    for row in tiles.chunks(per_row) {
+        ui.columns(per_row, |columns| {
+            for (tile, column) in row.iter().zip(columns) {
+                widgets::stat_tile(column, tile.caption, &tile.value, &tile.detail, |ui| {
+                    widgets::sparkline(ui, &tile.trend, palette.accent, |value| {
+                        if tile.smartness_colors {
+                            palette.smartness_color(value)
+                        } else {
+                            palette.accent
+                        }
+                    });
+                });
+            }
+        });
+    }
 }
 
 /// Totals since the run started, with deaths split by cause in one bar.
