@@ -45,7 +45,8 @@ Why not B: it hides the rules while a run plays. Why not C: the most code (`egui
 - **Done:** one ID, `io.github.riccardogabellone.GeneticAlgo`, for the Wayland app id, the `.desktop` file name, its `Icon` and `StartupWMClass` (a test checks they agree). Release builds on Windows open no console; `build.rs` embeds the `.ico` in the executable.
 - **Done:** `cargo-packager` builds `.deb` and `.AppImage` on Linux (ubuntu-22.04, for an older glibc floor), NSIS and MSI installers plus a portable zip on Windows, and a `.dmg` on macOS. A `v*` tag publishes them with `checksums.txt` and build provenance; pull requests that touch packaging build them without publishing. The packages ship the desktop entry, AppStream metadata and icons named after the ID, because cargo-packager's generated ones are named after the binary. CI builds on all three systems and requires the Windows icon to be embedded. Details: [packaging/README.md](../packaging/README.md).
 - **Fallback** if cargo-packager stalls (no release since late 2025): cargo-deb, a short macOS bundle script after ZapFast's, cargo-wix.
-- **Later:** signing (Apple Developer ID, Azure Artifact Signing), Flathub, winget, Homebrew. Until then, macOS Gatekeeper and Windows SmartScreen warn on first launch.
+- **Distribution:** GitHub releases only; publishing to Flathub, winget or Homebrew is not planned for now (decided 2026-11-07).
+- **Later:** signing (Apple Developer ID, Azure Artifact Signing). Until then, macOS Gatekeeper and Windows SmartScreen warn on first launch.
 
 ## Dependencies and the egui version
 The UI is on egui / eframe 0.37. Before adding an egui crate, check its egui requirement on crates.io; a crate built for another egui version brings a second, incompatible copy of egui.
