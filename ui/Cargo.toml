@@ -17,3 +17,76 @@ egui_kittest = "0.37"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+# Installers, built with `cargo packager --release` from ui/ (see packaging/README.md).
+[package.metadata.packager]
+product-name = "Genetic Algo"
+identifier = "io.github.riccardogabellone.GeneticAlgo"
+description = "Agent-based evolution sandbox: individuals roam a grid and evolve by natural selection."
+homepage = "https://github.com/riccardogabellone/genetic_algo"
+authors = ["Riccardo Gabellone"]
+publisher = "Riccardo Gabellone"
+license-file = "../LICENSE"
+category = "Education"
+before-packaging-command = "cargo build --release -p genetic_algo_ui"
+binaries-dir = "../target/release"
+out-dir = "../target/packages"
+binaries = [{ path = "genetic_algo_ui", main = true }]
+icons = [
+    "../assets/icons/icon-32.png",
+    "../assets/icons/icon-64.png",
+    "../assets/icons/icon-128.png",
+    "../assets/icons/icon-256.png",
+    "../assets/icons/icon-512.png",
+    "../assets/icons/icon.icns",
+    "../assets/icons/icon.ico",
+]
+
+# The generated desktop entry and icons are named after the binary, but the desktop
+# matches a window to its launcher by the app ID (ui/src/identity.rs), so the
+# packages ship packaging/linux/ files named after the ID instead.
+[package.metadata.packager.linux]
+generate-desktop-entry = false
+
+[package.metadata.packager.deb]
+package-name = "genetic-algo"
+# Loaded at run time (the binary itself links only libc), so they must be declared.
+depends = [
+    "libc6",
+    "libegl1",
+    "libgl1",
+    "libwayland-client0",
+    "libwayland-egl1",
+    "libxkbcommon0",
+    "libxkbcommon-x11-0",
+    "libx11-6",
+    "libx11-xcb1",
+    "libxcursor1",
+    "libxi6",
+    "libxrandr2",
+]
+section = "science"
+
+[package.metadata.packager.deb.files]
+"../packaging/linux/io.github.riccardogabellone.GeneticAlgo.desktop" = "usr/share/applications/io.github.riccardogabellone.GeneticAlgo.desktop"
+"../packaging/linux/io.github.riccardogabellone.GeneticAlgo.metainfo.xml" = "usr/share/metainfo/io.github.riccardogabellone.GeneticAlgo.metainfo.xml"
+"../assets/logo/logo.svg" = "usr/share/icons/hicolor/scalable/apps/io.github.riccardogabellone.GeneticAlgo.svg"
+"../assets/icons/icon-16.png" = "usr/share/icons/hicolor/16x16/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-24.png" = "usr/share/icons/hicolor/24x24/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-32.png" = "usr/share/icons/hicolor/32x32/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-48.png" = "usr/share/icons/hicolor/48x48/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-64.png" = "usr/share/icons/hicolor/64x64/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-128.png" = "usr/share/icons/hicolor/128x128/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-256.png" = "usr/share/icons/hicolor/256x256/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-512.png" = "usr/share/icons/hicolor/512x512/apps/io.github.riccardogabellone.GeneticAlgo.png"
+
+# The AppImage tooling looks for the desktop entry under the binary's name.
+[package.metadata.packager.appimage.files]
+"../packaging/linux/io.github.riccardogabellone.GeneticAlgo.desktop" = "usr/share/applications/genetic_algo_ui.desktop"
+"../assets/logo/logo.svg" = "usr/share/icons/hicolor/scalable/apps/io.github.riccardogabellone.GeneticAlgo.svg"
+"../assets/icons/icon-16.png" = "usr/share/icons/hicolor/16x16/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-32.png" = "usr/share/icons/hicolor/32x32/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-64.png" = "usr/share/icons/hicolor/64x64/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-128.png" = "usr/share/icons/hicolor/128x128/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-256.png" = "usr/share/icons/hicolor/256x256/apps/io.github.riccardogabellone.GeneticAlgo.png"
+"../assets/icons/icon-512.png" = "usr/share/icons/hicolor/512x512/apps/io.github.riccardogabellone.GeneticAlgo.png"
