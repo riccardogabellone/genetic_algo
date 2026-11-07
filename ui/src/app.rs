@@ -4,11 +4,7 @@ use std::time::Duration;
 
 use eframe::egui::{self, Key};
 
-use crate::{
-    charts::{self, Panels},
-    controller::Controller,
-    identity, map_view, rules_panel, theme, toolbar,
-};
+use crate::{controller::Controller, identity, map_view, rules_panel, stats_panel, theme, toolbar};
 
 /// Simulation time allowed per frame, which keeps a 60 fps window responsive.
 const FRAME_BUDGET: Duration = Duration::from_millis(10);
@@ -55,7 +51,9 @@ impl App {
             .resizable(true)
             .default_size(440.0)
             .min_size(300.0)
-            .show(ui, |ui| self.stats_and_charts(ui));
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| stats_panel::show(ui, &self.controller));
+            });
         let map_frame =
             egui::Frame::central_panel(ui.style()).fill(theme::palette(ui.ctx()).window);
         egui::CentralPanel::default()
@@ -89,107 +87,6 @@ impl App {
                 ui.colored_label(color, message);
             });
         }
-    }
-
-    fn stats_and_charts(&self, ui: &mut egui::Ui) {
-        let controller = &self.controller;
-        let simulation = controller.simulation();
-        let latest = simulation.latest();
-        let totals = controller.totals();
-        let config = simulation.config();
-
-        egui::Grid::new("stats")
-            .num_columns(4)
-            .spacing([18.0, 2.0])
-            .show(ui, |ui| {
-                let mut row = |left: (&str, String), right: (&str, String)| {
-                    ui.weak(left.0);
-                    ui.label(left.1);
-                    ui.weak(right.0);
-                    ui.label(right.1);
-                    ui.end_row();
-                };
-                let smartness = latest.smartness.map_or_else(
-                    || "n/a".to_owned(),
-                    |s| format!("{:.1} ({:.0}-{:.0})", s.mean, s.min, s.max),
-                );
-                let speed = latest
-                    .mean_speed
-                    .map_or_else(|| "n/a".to_owned(), |speed| format!("{speed:.2}"));
-                row(
-                    ("Tick", latest.tick.to_string()),
-                    ("Seed", controller.seed().to_string()),
-                );
-                row(
-                    (
-                        "Population",
-                        format!(
-                            "{} ({}M/{}F)",
-                            latest.population, latest.males, latest.females
-                        ),
-                    ),
-                    ("Generation", latest.max_generation.to_string()),
-                );
-                row(("Smartness", smartness), ("Speed", speed));
-                row(
-                    ("Births", totals.births.to_string()),
-                    ("Meals", totals.meals.to_string()),
-                );
-                row(
-                    ("Starved", totals.starved.to_string()),
-                    ("Overfed", totals.overfed.to_string()),
-                );
-                row(
-                    ("Old age", totals.old_age.to_string()),
-                    ("Hazard", totals.hazard.to_string()),
-                );
-                row(
-                    ("Fights", totals.fights.to_string()),
-                    ("Killed in fights", totals.combat.to_string()),
-                );
-                if config.leaders_enabled || totals.elections > 0 {
-                    let leader = simulation
-                        .leadership()
-                        .leader()
-                        .map_or_else(|| "none".to_owned(), |id| format!("#{id}"));
-                    let policy = simulation.leadership().policy().map_or_else(
-                        || "n/a".to_owned(),
-                        |policy| {
-                            format!(
-                                "aggr {:.2}, appetite {:.2}",
-                                policy.aggression, policy.appetite
-                            )
-                        },
-                    );
-                    row(
-                        ("Leader", leader),
-                        ("Elections", totals.elections.to_string()),
-                    );
-                    row(("Leader's policy", policy), ("", String::new()));
-                }
-            });
-        ui.separator();
-
-        let target = controller
-            .rules
-            .stop_at_target
-            .then_some(controller.rules.target);
-        let show_speed =
-            controller.rules.max_speed > 1 || latest.mean_speed.is_some_and(|speed| speed > 1.0);
-        let show_innate = config.contest_fight_chance > 0.0
-            || config.random_fight_chance > 0.0
-            || totals.fights > 0;
-        let show_policy = config.leaders_enabled;
-        charts::show(
-            ui,
-            simulation.history(),
-            target,
-            Panels {
-                speed: show_speed,
-                innate: show_innate,
-                policy: show_policy,
-            },
-        );
     }
 }
 
