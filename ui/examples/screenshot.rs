@@ -6,7 +6,7 @@
 use std::{fs::File, io::Write as _, path::PathBuf, time::Instant};
 
 use eframe::egui;
-use genetic_algo_ui::{app::App, controller::Preset};
+use genetic_algo_ui::{app::App, controller::Preset, renderer::native_options};
 
 struct Screenshotter {
     app: App,
@@ -76,10 +76,7 @@ fn main() -> eframe::Result {
         Some(other) => panic!("theme must be dark or light, not {other}"),
     };
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1360.0, 820.0]),
-        ..Default::default()
-    };
+    let options = native_options(egui::ViewportBuilder::default().with_inner_size([1360.0, 820.0]));
     eframe::run_native(
         "genetic_algo_ui_screenshot",
         options,

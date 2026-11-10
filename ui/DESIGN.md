@@ -48,6 +48,14 @@ Why not B: it hides the rules while a run plays. Why not C: the most code (`egui
 - **Distribution:** GitHub releases only; publishing to Flathub, winget or Homebrew is not planned for now (decided 2026-11-07).
 - **Later:** signing (Apple Developer ID, Azure Artifact Signing). Until then, macOS Gatekeeper and Windows SmartScreen warn on first launch.
 
+## Rendering
+OpenGL (eframe's `glow`) on Linux and macOS; wgpu on Windows, on DirectX 12 or Vulkan. `ui/Cargo.toml` compiles in one renderer per system and `ui/src/renderer.rs` configures it.
+
+- **Why not OpenGL on Windows:** its driver took more memory with every frame drawn, so the process grew for as long as a run played: about 20 KB per frame on an NVIDIA GPU, which is over 1 MB per second and 2 GB within half an hour. None of it was the app's data: the heap stayed near 5 MB throughout. wgpu stays flat.
+- **The cost:** wgpu starts higher, at about 130 to 210 MB resident depending on the GPU, against under 100 MB for OpenGL. It is asked to save memory (`MemoryHints::MemoryUsage`), which halves what it reserves.
+- **Why not wgpu everywhere:** OpenGL measured flat on Linux, and wgpu could not create a surface on WSL, which has no Vulkan loader.
+- **Checking it:** `cargo run --release -p genetic_algo_ui --example memory` plays runs back to back in the real window and fails if the heap or the process keeps growing. Run it on the system in question: the leak never showed on Linux.
+
 ## Dependencies and the egui version
 The UI is on egui / eframe 0.37. Before adding an egui crate, check its egui requirement on crates.io; a crate built for another egui version brings a second, incompatible copy of egui.
 
