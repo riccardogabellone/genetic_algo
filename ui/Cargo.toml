@@ -13,12 +13,21 @@ name = "GeneticAlgo"
 path = "src/main.rs"
 
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "wayland", "x11"] }
 egui-notify = "0.24"
 egui_material_icons = "0.9"
 egui_plot = "0.38"
 genetic_algo = { path = ".." }
 rand = "0.10"
+
+# The renderer: OpenGL, except on Windows. There the OpenGL driver's memory grew with every
+# frame drawn (measured on an NVIDIA GPU: about 20 KB per frame, 2 GB after half an hour of
+# running), so Windows draws with wgpu, on DirectX 12 or Vulkan. See ui/src/renderer.rs.
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow"] }
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["wgpu"] }
 
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["eframe"] }

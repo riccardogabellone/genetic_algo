@@ -22,6 +22,7 @@ cargo clippy --workspace --all-targets -- -D warnings   # lints, warnings are er
 cargo run --release -- --help                           # CLI options
 cargo run --release -p genetic_algo_ui                  # graphical UI
 cargo run --release -p genetic_algo_ui --example screenshot -- out.ppm 240 0 32 light   # window to a PPM, to check UI changes by eye
+cargo run --release -p genetic_algo_ui --example memory                                # runs back to back in the window; fails if memory keeps growing
 ```
 On WSL/Linux the UI needs `sudo apt install libegl1 libegl-mesa0`.
 
